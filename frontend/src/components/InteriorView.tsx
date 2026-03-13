@@ -1,7 +1,7 @@
 /**
- * InteriorView V6 — Rotatable 3D Tower
- * Real CSS 3D cubes stacked vertically (Y axis), drag-to-rotate, scroll-to-zoom.
- * Each floor = 6-face cube. Click a floor for agent details in side panel.
+ * InteriorView V7 — Rotatable 3D Tower (Z-axis stacking like Building.tsx)
+ * Uses exact same face construction as Building.tsx: ground = XY, height = Z.
+ * Drag to rotate, scroll to zoom.
  */
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
@@ -9,10 +9,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ServerLayoutItem, Agent } from '../types';
 
 // ─── Dimensions ───────────────────────────────────────────────────────────────
-const CUBE_W = 300;    // width  (X axis)
-const CUBE_H = 48;     // height (Y axis) per floor
-const CUBE_D = 200;    // depth  (Z axis)
-const GAP = 6;         // gap between floors
+const W = 280;     // cube width (X)
+const D = 200;     // cube depth (Y)
+const H = 44;      // cube height (Z) per floor
+const GAP = 6;     // vertical gap between floors
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function hexToRgb(hex: string): string {
@@ -38,14 +38,7 @@ function useIsMobile(): boolean {
   return m;
 }
 
-// ─── Cube Face (shared styles) ────────────────────────────────────────────────
-const faceBase: React.CSSProperties = {
-  position: 'absolute',
-  top: '50%', left: '50%',
-  backfaceVisibility: 'hidden',
-};
-
-// ─── Floor Cube ───────────────────────────────────────────────────────────────
+// ─── Floor Cube (same face pattern as Building.tsx) ───────────────────────────
 interface FloorCubeProps {
   agent: Agent;
   index: number;
@@ -58,83 +51,89 @@ interface FloorCubeProps {
 
 const FloorCube: React.FC<FloorCubeProps> = ({ agent, index, total, color, rgb, isSelected, onClick }) => {
   const isActive = agent.status === 'ACTIVE' || agent.status === 'THINKING';
-  const yPos = -(index * (CUBE_H + GAP));
+  const z = index * (H + GAP); // Z position = floor level
 
-  const borderCol = isSelected
-    ? `rgba(${rgb}, 0.85)`
-    : isActive ? `rgba(${rgb}, 0.4)` : 'rgba(80, 80, 120, 0.18)';
-  const activeBg = `rgba(${rgb}, 0.08)`;
-  const idleBg = 'rgba(8, 8, 18, 0.75)';
-  const bg = isActive ? activeBg : idleBg;
-  const topBg = isActive ? `rgba(${rgb}, 0.12)` : 'rgba(12, 12, 24, 0.6)';
-  const sideBg = isActive ? `rgba(${rgb}, 0.06)` : 'rgba(10, 10, 20, 0.6)';
+  const border = isSelected
+    ? `1.5px solid rgba(${rgb}, 0.85)`
+    : isActive ? `1px solid rgba(${rgb}, 0.45)` : '1px solid rgba(80, 80, 120, 0.18)';
+  
+  const frontBg = isActive ? `rgba(${rgb}, 0.1)` : 'rgba(5, 5, 10, 0.85)';
+  const sideBg = isActive ? `rgba(${rgb}, 0.06)` : 'rgba(5, 5, 10, 0.85)';
+  const topBg = isActive
+    ? `rgba(${rgb}, 0.15)`
+    : 'rgba(5, 5, 10, 0.85)';
+  const opac = isActive ? 0.7 : 0.3;
+  const selectedOpac = isSelected ? 0.9 : opac;
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ delay: index * 0.05, duration: 0.4 }}
+    <div
       onClick={(e) => { e.stopPropagation(); onClick(); }}
       style={{
         position: 'absolute',
+        left: -W / 2,
+        top: -D / 2,
+        width: W,
+        height: D,
         transformStyle: 'preserve-3d',
-        transform: `translateY(${yPos}px)`,
-        width: 0, height: 0, // anchor point at center
+        transform: `translateZ(${z}px)`,
         cursor: 'pointer',
       }}
     >
-      {/* ── FRONT face ── */}
+      {/* ── Back face (top edge, rotateX 90° from top) ── */}
       <div style={{
-        ...faceBase,
-        width: CUBE_W, height: CUBE_H,
-        marginLeft: -CUBE_W / 2, marginTop: -CUBE_H / 2,
-        transform: `translateZ(${CUBE_D / 2}px)`,
-        background: bg,
-        border: `1px solid ${borderCol}`,
-        boxShadow: isSelected
-          ? `0 0 25px rgba(${rgb}, 0.3), inset 0 0 20px rgba(${rgb}, 0.08)`
-          : isActive ? `inset 0 0 15px rgba(${rgb}, 0.06)` : 'none',
-        display: 'flex', alignItems: 'center', padding: '0 14px', gap: 10,
+        position: 'absolute', top: 0, left: 0,
+        width: W, height: H,
+        transformOrigin: 'top',
+        transform: 'rotateX(90deg)',
+        background: sideBg, border, opacity: selectedOpac,
+      }} />
+
+      {/* ── Front face (bottom edge, rotateX -90° from bottom) ── */}
+      <div style={{
+        position: 'absolute', bottom: 0, left: 0,
+        width: W, height: H,
+        transformOrigin: 'bottom',
+        transform: 'rotateX(-90deg)',
+        background: frontBg, border, opacity: selectedOpac + 0.15,
         overflow: 'hidden',
+        display: 'flex', alignItems: 'center', padding: '0 12px', gap: 8,
       }}>
         {/* Neon left bar */}
         {isActive && (
           <div style={{
             position: 'absolute', left: 0, top: 0, bottom: 0, width: 3,
-            background: color, boxShadow: `0 0 8px ${color}, 0 0 16px ${color}`,
+            background: color, boxShadow: `0 0 8px ${color}, 0 0 14px ${color}`,
           }} />
         )}
-        {/* Floor number */}
         <span style={{
           fontSize: 8, color: isActive ? color : '#444', fontWeight: 600,
-          letterSpacing: '0.1em', minWidth: 26, textAlign: 'center',
+          letterSpacing: '0.1em', minWidth: 24, textAlign: 'center',
           textShadow: isActive ? `0 0 5px rgba(${rgb}, 0.5)` : 'none',
         }}>
           FL.{index + 1}
         </span>
-        {/* Agent info */}
-        <span style={{ fontSize: 16 }}>{agent.emoji}</span>
+        <span style={{ fontSize: 15 }}>{agent.emoji}</span>
         <div style={{ flex: 1 }}>
           <div style={{
-            fontSize: 11, fontWeight: 600, color: '#fff',
+            fontSize: 10, fontWeight: 600, color: '#fff',
             letterSpacing: '0.06em', textTransform: 'uppercase',
             textShadow: isActive ? `0 0 5px rgba(${rgb}, 0.4)` : 'none',
           }}>
             {agent.name}
           </div>
-          <div style={{ fontSize: 8, color: isActive ? color : '#555', marginTop: 1, letterSpacing: '0.06em' }}>
+          <div style={{ fontSize: 7, color: isActive ? color : '#555', marginTop: 1, letterSpacing: '0.06em' }}>
             {agent.model}
           </div>
         </div>
         {/* Status dots */}
-        <div style={{ display: 'flex', gap: 4 }}>
+        <div style={{ display: 'flex', gap: 3 }}>
           {[0, 1, 2].map(d => (
             <motion.div
               key={d}
               animate={isActive ? { opacity: [0.3, 1, 0.3] } : {}}
               transition={isActive ? { duration: 1.5, delay: d * 0.3, repeat: Infinity } : {}}
               style={{
-                width: 5, height: 5, borderRadius: '50%',
+                width: 4, height: 4, borderRadius: '50%',
                 backgroundColor: isActive ? color : '#333',
                 boxShadow: isActive ? `0 0 4px ${color}` : 'none',
               }}
@@ -148,39 +147,13 @@ const FloorCube: React.FC<FloorCubeProps> = ({ agent, index, total, color, rgb, 
         }} />
       </div>
 
-      {/* ── BACK face ── */}
+      {/* ── Left face (rotateY 90° from left) ── */}
       <div style={{
-        ...faceBase,
-        width: CUBE_W, height: CUBE_H,
-        marginLeft: -CUBE_W / 2, marginTop: -CUBE_H / 2,
-        transform: `translateZ(${-CUBE_D / 2}px) rotateY(180deg)`,
-        background: isActive ? `rgba(${rgb}, 0.04)` : 'rgba(6, 6, 14, 0.6)',
-        border: `1px solid ${borderCol}`,
-      }} />
-
-      {/* ── RIGHT face ── */}
-      <div style={{
-        ...faceBase,
-        width: CUBE_D, height: CUBE_H,
-        marginLeft: -CUBE_D / 2, marginTop: -CUBE_H / 2,
-        transform: `rotateY(90deg) translateZ(${CUBE_W / 2}px)`,
-        background: sideBg,
-        border: `1px solid ${borderCol}`,
-      }}>
-        <div style={{
-          position: 'absolute', inset: 0, opacity: isActive ? 0.12 : 0.04,
-          backgroundImage: `repeating-linear-gradient(90deg, transparent 0, transparent 6px, rgba(${rgb}, 0.4) 6px, rgba(${rgb}, 0.4) 7px)`,
-        }} />
-      </div>
-
-      {/* ── LEFT face ── */}
-      <div style={{
-        ...faceBase,
-        width: CUBE_D, height: CUBE_H,
-        marginLeft: -CUBE_D / 2, marginTop: -CUBE_H / 2,
-        transform: `rotateY(-90deg) translateZ(${CUBE_W / 2}px)`,
-        background: sideBg,
-        border: `1px solid ${borderCol}`,
+        position: 'absolute', top: 0, left: 0,
+        width: H, height: D,
+        transformOrigin: 'left',
+        transform: 'rotateY(90deg)',
+        background: sideBg, border, opacity: selectedOpac,
       }}>
         <div style={{
           position: 'absolute', inset: 0, opacity: isActive ? 0.12 : 0.04,
@@ -189,25 +162,41 @@ const FloorCube: React.FC<FloorCubeProps> = ({ agent, index, total, color, rgb, 
         }} />
       </div>
 
-      {/* ── TOP face ── */}
+      {/* ── Right face (rotateY -90° from right) ── */}
       <div style={{
-        ...faceBase,
-        width: CUBE_W, height: CUBE_D,
-        marginLeft: -CUBE_W / 2, marginTop: -CUBE_D / 2,
-        transform: `rotateX(90deg) translateZ(${CUBE_H / 2}px)`,
-        background: topBg,
-        border: `1px solid ${borderCol}`,
-        boxShadow: isActive ? `0 0 20px rgba(${rgb}, 0.15)` : 'none',
+        position: 'absolute', top: 0, right: 0,
+        width: H, height: D,
+        transformOrigin: 'right',
+        transform: 'rotateY(-90deg)',
+        background: sideBg, border, opacity: selectedOpac + 0.05,
+        overflow: 'hidden',
+      }}>
+        <div style={{
+          position: 'absolute', inset: 0, opacity: isActive ? 0.15 : 0.05,
+          backgroundImage: `repeating-linear-gradient(90deg, transparent 0, transparent 5px, rgba(${rgb}, 0.4) 5px, rgba(${rgb}, 0.4) 6px)`,
+        }} />
+      </div>
+
+      {/* ── Top face (translateZ to height) ── */}
+      <div style={{
+        position: 'absolute', inset: 0,
+        transform: `translateZ(${H}px)`,
+        background: topBg, border,
+        opacity: selectedOpac + 0.2,
+        boxShadow: isActive
+          ? `0 0 30px rgba(${rgb}, 0.2)`
+          : isSelected ? `0 0 20px rgba(${rgb}, 0.15)` : 'none',
       }}>
         <div style={{
           position: 'absolute', inset: 0, opacity: isActive ? 0.2 : 0.05,
           backgroundImage: `radial-gradient(rgba(${rgb}, 0.6) 1px, transparent 1px)`,
           backgroundSize: '8px 8px',
         }} />
-        {/* Agent name on top face */}
+        {/* Agent label on top */}
         <div style={{
           position: 'absolute', inset: 0,
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+          pointerEvents: 'none',
         }}>
           <span style={{ fontSize: 14 }}>{agent.emoji}</span>
           <span style={{
@@ -220,32 +209,20 @@ const FloorCube: React.FC<FloorCubeProps> = ({ agent, index, total, color, rgb, 
         </div>
       </div>
 
-      {/* ── BOTTOM face ── */}
-      <div style={{
-        ...faceBase,
-        width: CUBE_W, height: CUBE_D,
-        marginLeft: -CUBE_W / 2, marginTop: -CUBE_D / 2,
-        transform: `rotateX(-90deg) translateZ(${CUBE_H / 2}px)`,
-        background: 'rgba(5, 5, 12, 0.5)',
-        border: `1px solid rgba(60, 60, 80, 0.08)`,
-      }} />
-
-      {/* Glow effect for active */}
+      {/* Active glow beam */}
       {isActive && (
         <motion.div
-          animate={{ opacity: [0.1, 0.25, 0.1] }}
+          animate={{ opacity: [0.12, 0.25, 0.12] }}
           transition={{ duration: 2.5, repeat: Infinity }}
           style={{
-            ...faceBase,
-            width: CUBE_W + 10, height: CUBE_D + 10,
-            marginLeft: -(CUBE_W + 10) / 2, marginTop: -(CUBE_D + 10) / 2,
-            transform: `rotateX(90deg) translateZ(${CUBE_H / 2 + 1}px)`,
-            background: `radial-gradient(ellipse, rgba(${rgb}, 0.2), transparent 70%)`,
-            pointerEvents: 'none', border: 'none',
+            position: 'absolute', inset: -5,
+            transform: `translateZ(${H + 1}px)`,
+            background: `radial-gradient(ellipse, rgba(${rgb}, 0.15), transparent 70%)`,
+            pointerEvents: 'none',
           }}
         />
       )}
-    </motion.div>
+    </div>
   );
 };
 
@@ -294,7 +271,6 @@ const DetailPanel: React.FC<DetailPanelProps> = ({
       transition={{ type: 'spring', stiffness: 300, damping: 30 }}
       style={panelStyle}
     >
-      {/* Corner accents */}
       {[
         { top: 0, left: 0, borderTop: `2px solid ${color}`, borderLeft: `2px solid ${color}` },
         { top: 0, right: 0, borderTop: `2px solid ${color}`, borderRight: `2px solid ${color}` },
@@ -319,7 +295,6 @@ const DetailPanel: React.FC<DetailPanelProps> = ({
         </div>
       ) : (
         <div style={{ padding: 20, position: 'relative', zIndex: 2 }}>
-          {/* Agent header */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 24 }}>
             <span style={{
               fontSize: 40, lineHeight: 1,
@@ -354,7 +329,6 @@ const DetailPanel: React.FC<DetailPanelProps> = ({
             </div>
           </div>
 
-          {/* Stat cards */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 20 }}>
             {[
               { label: 'MODEL', value: agent.model },
@@ -370,7 +344,6 @@ const DetailPanel: React.FC<DetailPanelProps> = ({
             ))}
           </div>
 
-          {/* Activity bar */}
           <div style={{ marginBottom: 20 }}>
             <div style={{ fontSize: 9, color: '#555', letterSpacing: '0.12em', marginBottom: 8 }}>⚡ ACTIVITY</div>
             <div style={{
@@ -389,7 +362,6 @@ const DetailPanel: React.FC<DetailPanelProps> = ({
             </div>
           </div>
 
-          {/* Info */}
           <div>
             <div style={{ fontSize: 9, color: '#555', letterSpacing: '0.12em', marginBottom: 8 }}>📋 AGENT INFO</div>
             {[
@@ -424,12 +396,10 @@ interface InteriorViewProps {
 export default function InteriorView({ server, onClose }: InteriorViewProps) {
   const isMobile = useIsMobile();
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
-  const [rotX, setRotX] = useState(60);   // same starting angle as main dashboard
-  const [rotY, setRotY] = useState(0);
-  const [rotZ, setRotZ] = useState(-45);  // match isometric view
-  const [zoom, setZoom] = useState(0.75);
+  const [rotX, setRotX] = useState(60);     // match dashboard
+  const [rotZ, setRotZ] = useState(-45);    // match dashboard
+  const [zoom, setZoom] = useState(0.7);
   const [dragging, setDragging] = useState(false);
-  const [dragMode, setDragMode] = useState<'rotate' | 'none'>('none');
   const lastPos = useRef({ x: 0, y: 0 });
   const dragDist = useRef(0);
 
@@ -444,7 +414,7 @@ export default function InteriorView({ server, onClose }: InteriorViewProps) {
   const color = server.color;
   const rgb = hexToRgb(color);
 
-  // Sort: ACTIVE at top
+  // Sort: ACTIVE floors at top (highest Z)
   const sortedAgents = [...server.agents].sort((a, b) => {
     const order: Record<string, number> = { ACTIVE: 3, THINKING: 2, FINISHED: 1, IDLE: 0 };
     return (order[a.status] ?? 0) - (order[b.status] ?? 0);
@@ -452,12 +422,11 @@ export default function InteriorView({ server, onClose }: InteriorViewProps) {
 
   const selectedAgent = selectedIdx !== null ? sortedAgents[selectedIdx] : null;
   const statusColor = server.status === 'ONLINE' ? '#22c55e' : server.status === 'OFFLINE' ? '#ff4444' : '#ffaa00';
-  const towerTotalH = sortedAgents.length * (CUBE_H + GAP);
+  const towerH = sortedAgents.length * (H + GAP);
 
-  // ── Mouse/Touch handlers (same as main dashboard) ──
+  // ── Mouse drag to rotate ──
   const handleMouseDown = (e: React.MouseEvent) => {
     setDragging(true);
-    setDragMode('rotate');
     lastPos.current = { x: e.clientX, y: e.clientY };
     dragDist.current = 0;
   };
@@ -470,14 +439,14 @@ export default function InteriorView({ server, onClose }: InteriorViewProps) {
     setRotZ(prev => prev - dx * 0.3);
     lastPos.current = { x: e.clientX, y: e.clientY };
   };
-  const handleMouseUp = () => { setDragging(false); setDragMode('none'); };
+  const handleMouseUp = () => setDragging(false);
 
+  // ── Touch handlers ──
   const handleTouchStart = (e: React.TouchEvent) => {
     if (e.touches.length !== 1) return;
     lastPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
     dragDist.current = 0;
     setDragging(true);
-    setDragMode('rotate');
   };
   const handleTouchMove = (e: React.TouchEvent) => {
     if (!dragging || e.touches.length !== 1) return;
@@ -488,8 +457,9 @@ export default function InteriorView({ server, onClose }: InteriorViewProps) {
     setRotZ(prev => prev - dx * 0.3);
     lastPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
   };
-  const handleTouchEnd = () => { setDragging(false); setDragMode('none'); };
+  const handleTouchEnd = () => setDragging(false);
 
+  // ── Scroll zoom ──
   const handleWheel = (e: React.WheelEvent) => {
     setZoom(prev => Math.max(0.3, Math.min(2, prev + e.deltaY * -0.001)));
   };
@@ -542,7 +512,7 @@ export default function InteriorView({ server, onClose }: InteriorViewProps) {
         </div>
       </div>
 
-      {/* ── Status (top-right) ── */}
+      {/* ── Status ── */}
       <div style={{
         position: 'absolute', top: 16, right: isMobile ? 16 : 320, zIndex: 30,
         display: 'flex', alignItems: 'center', gap: 10,
@@ -557,12 +527,12 @@ export default function InteriorView({ server, onClose }: InteriorViewProps) {
         <span style={{ fontSize: 9, color: '#444' }}>{server.agents.length} AGENTS</span>
       </div>
 
-      {/* ── 3D Tower Area ── */}
+      {/* ── 3D Scene ── */}
       <div
         style={{
           flex: 1, position: 'relative', overflow: 'hidden',
           perspective: '1500px',
-          cursor: dragMode === 'rotate' ? 'grabbing' : 'grab',
+          cursor: dragging ? 'grabbing' : 'grab',
         }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
@@ -581,21 +551,52 @@ export default function InteriorView({ server, onClose }: InteriorViewProps) {
           backgroundSize: '50px 50px',
         }} />
 
-        {/* 3D Scene — same transform style as main dashboard */}
+        {/* 3D transform container — SAME as App.tsx dashboard */}
         <div style={{
           position: 'absolute', inset: 0,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
+          perspective: '1500px',
         }}>
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.5 }}
-            style={{
+          <div style={{
+            position: 'relative',
+            transformStyle: 'preserve-3d',
+            transform: `scale(${zoom}) rotateX(${rotX}deg) rotateZ(${rotZ}deg)`,
+            width: 0, height: 0, // anchor at center
+          }}>
+            {/* Ground platform */}
+            <div style={{
+              position: 'absolute',
+              left: -(W + 40) / 2,
+              top: -(D + 40) / 2,
+              width: W + 40,
+              height: D + 40,
               transformStyle: 'preserve-3d',
-              transform: `scale(${zoom}) rotateX(${rotX}deg) rotateZ(${rotZ}deg)`,
-            }}
-          >
-            {/* Floor cubes */}
+              transform: 'translateZ(-6px)',
+            }}>
+              {/* Platform surface */}
+              <div style={{
+                position: 'absolute', inset: 0,
+                background: '#0a0a18',
+                border: `1px solid rgba(${rgb}, 0.2)`,
+                boxShadow: `inset 0 0 40px rgba(${rgb}, 0.03)`,
+              }}>
+                <div style={{
+                  position: 'absolute', inset: 0, opacity: 0.1,
+                  backgroundImage: `linear-gradient(rgba(${rgb}, 0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(${rgb}, 0.3) 1px, transparent 1px)`,
+                  backgroundSize: '20px 20px',
+                }} />
+                <div style={{
+                  position: 'absolute', bottom: 6, left: 0, right: 0,
+                  display: 'flex', justifyContent: 'center', gap: 16,
+                  fontSize: 7, color: '#444', letterSpacing: '0.08em',
+                }}>
+                  <span>{server.ip}</span>
+                  <span>PORT {server.port}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Floor cubes stacked on Z axis */}
             {sortedAgents.map((agent, i) => (
               <FloorCube
                 key={agent.id}
@@ -611,56 +612,26 @@ export default function InteriorView({ server, onClose }: InteriorViewProps) {
               />
             ))}
 
-            {/* Base platform */}
-            <div style={{
-              position: 'absolute',
-              transformStyle: 'preserve-3d',
-              transform: `translateY(${CUBE_H / 2 + 10}px)`,
-            }}>
-              {/* Platform top face */}
-              <div style={{
-                ...faceBase,
-                width: CUBE_W + 40, height: CUBE_D + 40,
-                marginLeft: -(CUBE_W + 40) / 2, marginTop: -(CUBE_D + 40) / 2,
-                transform: `rotateX(90deg) translateZ(0px)`,
-                background: '#0a0a18',
-                border: `1px solid rgba(${rgb}, 0.2)`,
-                boxShadow: `0 0 30px rgba(${rgb}, 0.06)`,
-              }}>
-                <div style={{
-                  position: 'absolute', inset: 0, opacity: 0.1,
-                  backgroundImage: `repeating-linear-gradient(90deg, transparent 0, transparent 4px, rgba(${rgb}, 0.3) 4px, rgba(${rgb}, 0.3) 5px), repeating-linear-gradient(0deg, transparent 0, transparent 4px, rgba(${rgb}, 0.3) 4px, rgba(${rgb}, 0.3) 5px)`,
-                }} />
-                {/* Server info on platform */}
-                <div style={{
-                  position: 'absolute', bottom: 8, left: 0, right: 0,
-                  display: 'flex', justifyContent: 'center', gap: 16,
-                  fontSize: 8, color: '#444', letterSpacing: '0.08em',
-                }}>
-                  <span>{server.ip}</span>
-                  <span>PORT {server.port}</span>
-                </div>
-              </div>
-            </div>
-
             {/* Beacon on top */}
             <div style={{
               position: 'absolute',
+              left: 0, top: 0,
               transformStyle: 'preserve-3d',
-              transform: `translateY(${-(towerTotalH + 20)}px)`,
+              transform: `translateZ(${towerH + 15}px)`,
+              pointerEvents: 'none',
             }}>
               <motion.div
                 animate={{ opacity: [0.3, 1, 0.3] }}
                 transition={{ duration: 1.5, repeat: Infinity }}
                 style={{
-                  ...faceBase,
                   width: 10, height: 10, borderRadius: '50%',
                   marginLeft: -5, marginTop: -5,
-                  backgroundColor: color, boxShadow: `0 0 15px ${color}, 0 0 30px ${color}`,
+                  backgroundColor: color,
+                  boxShadow: `0 0 15px ${color}, 0 0 30px ${color}`,
                 }}
               />
             </div>
-          </motion.div>
+          </div>
         </div>
       </div>
 
