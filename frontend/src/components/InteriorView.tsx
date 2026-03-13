@@ -34,7 +34,7 @@ function formatTokens(used?: number, max?: number): string {
   return max ? `${fmt(used)} / ${fmt(max)}` : fmt(used);
 }
 
-// ─── 3D Server Node ───────────────────────────────────────────────────────────
+// ─── 3D Server Node (matches David's Css3dApp rack design) ───────────────────
 interface ServerNodeProps {
   agent: Agent;
   index: number;
@@ -51,14 +51,19 @@ const ServerNode: React.FC<ServerNodeProps> = ({ agent, index, total, hexColor, 
   // Stack from top to bottom (index 0 is highest)
   const baseY = (total - 1 - index) * SPACING + H / 2 + 0.5;
   const progress = agent.tokensPct ?? 0;
-  const modelLabel = agent.modelFriendly || agent.model;
+
+  // Status dot color
+  const statusColor = isActive ? '#22c55e'
+    : agent.status === 'IDLE' ? '#eab308'
+    : '#4b5563';
+  const statusGlow = isActive ? '0 0 8px #22c55e' : 'none';
 
   useFrame(() => {
     if (!groupRef.current) return;
     // Smoothly pull out selected server
     const targetZ = isSelected ? 0.8 : 0;
     groupRef.current.position.z = THREE.MathUtils.lerp(groupRef.current.position.z, targetZ, 0.1);
-    // Subtle vibration if active/thinking
+    // Subtle vibration if active
     if (isActive) {
       groupRef.current.position.x = (Math.random() - 0.5) * 0.02;
     } else {
@@ -84,7 +89,7 @@ const ServerNode: React.FC<ServerNodeProps> = ({ agent, index, total, hexColor, 
         />
         <Edges scale={1.001} threshold={15} color={hexColor} opacity={isSelected ? 1 : 0.5} transparent />
 
-        {/* Front Panel UI */}
+        {/* Front Panel UI — matches Css3dApp exactly */}
         <Html
           transform
           position={[0, 0, D / 2 + 0.001]}
@@ -92,47 +97,52 @@ const ServerNode: React.FC<ServerNodeProps> = ({ agent, index, total, hexColor, 
           zIndexRange={[100, 0]}
         >
           <div
-            className="flex flex-col justify-between p-6 box-border cursor-pointer transition-colors duration-300"
+            className="flex flex-col justify-between p-6 box-border cursor-pointer transition-all duration-500"
             style={{
               width: `${W * 100}px`,
               height: `${H * 100}px`,
               backgroundColor: isSelected ? 'rgba(2, 6, 23, 0.95)' : 'rgba(2, 6, 23, 0.8)',
-              borderTop: `2px solid ${hexColor}`,
+              borderColor: isSelected ? hexColor : `${hexColor}40`,
+              borderWidth: 2,
+              borderStyle: 'solid',
               backdropFilter: 'blur(8px)',
+              boxShadow: isSelected ? `0 0 30px ${hexColor}60, 0 0 15px ${hexColor}40 inset` : 'none',
             }}
           >
-            <div style={{ color: hexColor }} className="font-mono text-xl tracking-[0.2em] font-medium flex items-center gap-2">
-              <span style={{ fontSize: '1.2rem' }}>{agent.emoji}</span>
-              <span>{agent.name.toUpperCase()}</span>
+            {/* Agent name — big, tracking wide, mono */}
+            <div style={{ color: hexColor }} className="font-mono text-2xl tracking-[0.2em] font-medium">
+              {agent.name.toUpperCase()}
             </div>
             <div className="flex justify-between items-end">
+              {/* Status dots: green=active, yellow=idle, gray=other */}
               <div className="flex gap-2.5">
-                {/* Status dots: ACTIVE = pulsing color, IDLE = gray */}
-                {[0, 1, 2].map((d) => (
-                  <div
-                    key={d}
-                    className={isActive ? 'animate-pulse' : ''}
-                    style={{
-                      width: 12, height: 12, borderRadius: '50%',
-                      backgroundColor: isActive ? hexColor : '#444',
-                      boxShadow: isActive ? `0 0 12px ${hexColor}` : 'none',
-                      opacity: d === 0 ? 1 : d === 1 ? 0.4 : 0.15,
-                    }}
-                  />
-                ))}
+                <div
+                  className={isActive ? 'animate-pulse' : ''}
+                  style={{
+                    width: 10, height: 10, borderRadius: '50%',
+                    backgroundColor: statusColor,
+                    boxShadow: statusGlow,
+                  }}
+                />
+                <div style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: hexColor, opacity: 0.4 }} />
+                <div style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: hexColor, opacity: 0.15 }} />
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-                <div style={{ fontSize: 10, color: hexColor, fontFamily: 'monospace', letterSpacing: '0.05em' }}>
-                  {modelLabel}
-                </div>
-                {/* Progress bar = tokensPct */}
-                <div className="w-64 h-2 bg-white/10 rounded-full overflow-hidden">
+              {/* Progress bar with shimmer */}
+              <div className="w-48 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                <div
+                  className="h-full transition-all duration-500 relative"
+                  style={{
+                    width: `${progress}%`,
+                    backgroundColor: hexColor,
+                    boxShadow: `0 0 10px ${hexColor}`,
+                  }}
+                >
                   <div
-                    className="h-full transition-all duration-500"
+                    className="absolute inset-0 bg-white/30"
                     style={{
-                      width: `${progress}%`,
-                      backgroundColor: hexColor,
-                      boxShadow: `0 0 10px ${hexColor}`,
+                      animation: 'shimmer 2s infinite',
+                      backgroundImage: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent)',
+                      backgroundSize: '200% 100%',
                     }}
                   />
                 </div>
@@ -141,7 +151,7 @@ const ServerNode: React.FC<ServerNodeProps> = ({ agent, index, total, hexColor, 
           </div>
         </Html>
 
-        {/* Top Face Graphic */}
+        {/* Top Face Graphic — dot grid + agent ID */}
         <Html
           transform
           position={[0, H / 2 + 0.001, 0]}
@@ -150,16 +160,20 @@ const ServerNode: React.FC<ServerNodeProps> = ({ agent, index, total, hexColor, 
           zIndexRange={[0, 0]}
         >
           <div
-            className="flex items-center justify-center opacity-10 pointer-events-none"
+            className="flex items-center justify-center overflow-hidden pointer-events-none"
             style={{
               width: `${W * 100}px`,
               height: `${D * 100}px`,
+              opacity: 0.1,
               backgroundImage: 'radial-gradient(circle, #fff 1px, transparent 1px)',
-              backgroundSize: '40px 40px',
+              backgroundSize: '20px 20px',
             }}
           >
-            <span className="font-mono text-6xl font-bold tracking-widest text-white transform -rotate-45">
-              {agent.emoji}
+            <span
+              className="font-mono text-8xl font-bold tracking-widest transform -rotate-45 transition-colors duration-500"
+              style={{ color: isSelected ? hexColor : 'rgba(255,255,255,0.2)' }}
+            >
+              {agent.id.toUpperCase()}
             </span>
           </div>
         </Html>
