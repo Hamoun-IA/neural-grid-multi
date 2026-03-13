@@ -6,7 +6,7 @@
 
 import React, { useState, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Server as ServerIcon, X } from 'lucide-react';
+import { Server as ServerIcon, Cpu, Network, Database, X } from 'lucide-react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Edges, Html } from '@react-three/drei';
 import * as THREE from 'three';
@@ -202,7 +202,7 @@ const RackTower: React.FC<RackTowerProps> = ({ count, hexColor }) => {
   );
 };
 
-// ─── Detail Panel ─────────────────────────────────────────────────────────────
+// ─── Detail Panel (matches David's V8 design exactly) ────────────────────────
 interface DetailPanelProps {
   agent: Agent | null;
   floorIndex: number;
@@ -215,34 +215,10 @@ interface DetailPanelProps {
 const DetailPanel: React.FC<DetailPanelProps> = ({
   agent, floorIndex, total, hexColor, serverName, onClose,
 }) => {
-  // Generate deterministic activity bars from agent id
-  const bars = useMemo(() => {
-    if (!agent) return [];
-    let seed = 0;
-    for (let i = 0; i < agent.id.length; i++) seed += agent.id.charCodeAt(i);
-    const isActive = agent.status === 'ACTIVE';
-    return Array.from({ length: 24 }, (_, i) => {
-      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-      return isActive && i >= 20 ? 60 + (seed % 40) : 5 + (seed % 50);
-    });
-  }, [agent]);
-
   const isActive = agent?.status === 'ACTIVE' || agent?.status === 'THINKING';
-  const statusColor = isActive ? '#22c55e' : '#555';
-  const hasTokens = agent?.tokensUsed !== undefined || agent?.tokensPct !== undefined;
-
-  // Stat cards: tokens if available, else sessions + floor
-  const statCards = agent
-    ? hasTokens
-      ? [
-          { label: 'MODEL', value: agent.modelFriendly || agent.model },
-          { label: 'TOKENS', value: formatTokens(agent.tokensUsed, agent.tokensMax) },
-        ]
-      : [
-          { label: 'SESSIONS', value: String(agent.sessionCount ?? 0) },
-          { label: 'FLOOR', value: `${floorIndex + 1} / ${total}` },
-        ]
-    : [];
+  const progress = agent?.tokensPct ?? 0;
+  const isCyan = hexColor.toLowerCase().includes('0f') || hexColor.toLowerCase().includes('00f');
+  const colorClass = `text-[${hexColor}]`;
 
   return (
     <motion.div
@@ -250,165 +226,114 @@ const DetailPanel: React.FC<DetailPanelProps> = ({
       animate={{ x: 0 }}
       exit={{ x: '100%' }}
       transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-      style={{
-        width: 384,
-        background: 'rgba(5, 5, 8, 0.92)',
-        backdropFilter: 'blur(20px)',
-        borderLeft: '1px solid rgba(255,255,255,0.08)',
-        position: 'absolute',
-        right: 0, top: 0, bottom: 0,
-        zIndex: 30,
-        display: 'flex',
-        flexDirection: 'column',
-        padding: 32,
-        overflowY: 'auto',
-      }}
+      className="w-96 bg-[#050508]/90 backdrop-blur-2xl border-l border-white/10 p-8 flex flex-col absolute right-0 top-0 bottom-0 z-30 shadow-2xl"
     >
-      {/* Close */}
+      {/* Close button */}
       <button
         onClick={onClose}
-        style={{
-          position: 'absolute', top: 24, right: 24,
-          background: 'none', border: 'none', cursor: 'pointer',
-          color: 'rgba(255,255,255,0.4)',
-        }}
+        className="absolute top-6 right-6 text-white/40 hover:text-white transition-colors cursor-pointer"
       >
-        <X size={20} />
+        <X className="w-5 h-5" />
       </button>
 
       {!agent ? (
-        <div style={{
-          flex: 1, display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center', gap: 8,
-        }}>
-          <div style={{ fontSize: 10, color: '#444', letterSpacing: '0.2em', fontFamily: 'monospace' }}>
-            SELECT A SERVER UNIT
-          </div>
-          <div style={{ fontSize: 9, color: '#333', fontFamily: 'monospace' }}>TO INSPECT AGENT</div>
+        <div className="flex-1 flex flex-col items-center justify-center gap-2">
+          <div className="text-[10px] text-white/30 tracking-[0.2em] font-mono">SELECT A SERVER UNIT</div>
+          <div className="text-[9px] text-white/20 font-mono">TO INSPECT AGENT</div>
         </div>
       ) : (
         <>
-          {/* Agent Header */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 32, marginTop: 8 }}>
-            <div style={{
-              width: 48, height: 48, borderRadius: 8,
-              border: `1px solid ${hexColor}4d`,
-              background: `${hexColor}1a`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 24,
-            }}>
-              {agent.emoji}
+          {/* Agent Header — icon box + name + status */}
+          <div className="flex items-center gap-4 mb-8 mt-2">
+            <div
+              className="w-12 h-12 rounded-lg border flex items-center justify-center"
+              style={{
+                borderColor: `${hexColor}4d`,
+                backgroundColor: `${hexColor}1a`,
+                color: hexColor,
+              }}
+            >
+              <Cpu className="w-6 h-6" />
             </div>
             <div>
-              <div style={{
-                fontSize: 18, fontWeight: 700, letterSpacing: '0.08em', color: '#fff',
-              }}>
-                {agent.name}
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
-                <motion.span
-                  animate={isActive ? { scale: [1, 1.3, 1] } : {}}
-                  transition={isActive ? { duration: 2, repeat: Infinity } : {}}
-                  style={{
-                    width: 8, height: 8, borderRadius: '50%', display: 'inline-block',
-                    backgroundColor: statusColor,
-                    boxShadow: isActive ? `0 0 8px ${statusColor}` : 'none',
-                  }}
+              <h2 className="text-xl font-bold tracking-wider">{agent.name}</h2>
+              <div className="flex items-center gap-2 text-sm text-white/50 font-mono mt-1">
+                <span
+                  className={`w-2 h-2 rounded-full ${isActive ? 'bg-green-500' : 'bg-gray-500'}`}
+                  style={isActive ? { boxShadow: '0 0 6px #22c55e' } : {}}
                 />
-                <span style={{
-                  fontSize: 11, letterSpacing: '0.15em', textTransform: 'uppercase',
-                  color: statusColor, fontFamily: 'monospace',
-                }}>
-                  {agent.status}
-                </span>
+                {agent.status}
               </div>
             </div>
           </div>
 
-          {/* Stat Cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
-            {statCards.map(({ label, value }) => (
-              <div key={label} style={{
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(255,255,255,0.06)',
-                padding: '12px 14px',
-                borderRadius: 6,
-              }}>
-                <div style={{
-                  fontSize: 9, color: 'rgba(255,255,255,0.35)',
-                  letterSpacing: '0.15em', marginBottom: 6,
-                  fontFamily: 'monospace',
-                }}>
-                  {label}
-                </div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: '#fff' }}>{value}</div>
+          <div className="space-y-6 flex-1 flex flex-col">
+            {/* Metrics: CPU LOAD + MEMORY */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-white/5 rounded-lg p-4 border border-white/5">
+                <div className="text-white/40 text-[10px] mb-1 font-mono tracking-wider">TOKEN USAGE</div>
+                <div className="text-2xl font-light">{Math.round(progress)}%</div>
               </div>
-            ))}
-          </div>
-
-          {/* Activity Graph */}
-          <div style={{
-            background: 'rgba(255,255,255,0.04)',
-            border: '1px solid rgba(255,255,255,0.06)',
-            borderRadius: 6,
-            padding: 16,
-            height: 100,
-            marginBottom: 20,
-            display: 'flex', flexDirection: 'column',
-          }}>
-            <div style={{
-              fontSize: 9, color: 'rgba(255,255,255,0.35)',
-              letterSpacing: '0.15em', marginBottom: 8,
-              fontFamily: 'monospace',
-            }}>
-              ⚡ ACTIVITY
-            </div>
-            <div style={{
-              flex: 1, display: 'flex', alignItems: 'flex-end', gap: 2,
-            }}>
-              {bars.map((h, i) => (
-                <div
-                  key={i}
-                  style={{
-                    flex: 1,
-                    height: `${h}%`,
-                    borderRadius: 1,
-                    backgroundColor: hexColor,
-                    opacity: i >= 20 && isActive ? 0.8 : 0.25,
-                    boxShadow: i >= 20 && isActive ? `0 0 3px ${hexColor}` : 'none',
-                  }}
-                />
-              ))}
-            </div>
-          </div>
-
-          {/* Agent Info */}
-          <div>
-            <div style={{
-              fontSize: 9, color: 'rgba(255,255,255,0.35)',
-              letterSpacing: '0.15em', marginBottom: 10,
-              fontFamily: 'monospace',
-            }}>
-              📋 AGENT INFO
-            </div>
-            {[
-              ['Status', agent.status],
-              ['Model', agent.modelFriendly || agent.model],
-              ['Role', agent.role || '—'],
-              ['Sessions', String(agent.sessionCount ?? agent.activeSessions ?? 0)],
-              ['Last Active', formatTime(agent.lastActiveAt)],
-              ['Server', serverName],
-            ].map(([k, v]) => (
-              <div key={k} style={{
-                display: 'flex', justifyContent: 'space-between',
-                padding: '7px 0',
-                borderBottom: '1px solid rgba(255,255,255,0.04)',
-                fontSize: 12,
-              }}>
-                <span style={{ color: 'rgba(255,255,255,0.35)', fontFamily: 'monospace' }}>{k}</span>
-                <span style={{ color: '#ddd' }}>{v}</span>
+              <div className="bg-white/5 rounded-lg p-4 border border-white/5">
+                <div className="text-white/40 text-[10px] mb-1 font-mono tracking-wider">SESSIONS</div>
+                <div className="text-2xl font-light">{agent.sessionCount ?? 0}</div>
               </div>
-            ))}
+            </div>
+
+            {/* Network I/O Graph */}
+            <div className="bg-white/5 rounded-lg p-4 border border-white/5 h-32 flex flex-col">
+              <div className="text-white/40 text-[10px] mb-2 font-mono flex items-center gap-2 tracking-wider">
+                <Network className="w-3 h-3" /> NETWORK I/O
+              </div>
+              <div className="flex-1 flex items-end gap-1">
+                {Array.from({ length: 24 }).map((_, i) => {
+                  // Deterministic bars from agent id
+                  let seed = 0;
+                  for (let c = 0; c < (agent.id?.length ?? 0); c++) seed += agent.id.charCodeAt(c);
+                  seed = (seed * (i + 1) * 1103515245 + 12345) & 0x7fffffff;
+                  const h = isActive && i >= 20 ? 60 + (seed % 40) : 5 + (seed % 50);
+                  return (
+                    <div
+                      key={i}
+                      className="flex-1 rounded-t-sm"
+                      style={{
+                        height: `${h}%`,
+                        backgroundColor: hexColor,
+                        opacity: isActive && i >= 20 ? 0.7 : 0.3,
+                      }}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* System Logs */}
+            <div className="flex-1 flex flex-col min-h-0">
+              <div className="text-white/40 text-[10px] mb-2 font-mono flex items-center gap-2 tracking-wider">
+                <Database className="w-3 h-3" /> AGENT INFO
+              </div>
+              <div className="bg-black/50 rounded-lg p-4 border border-white/5 flex-1 font-mono text-[10px] leading-relaxed text-white/60 space-y-2 overflow-y-auto">
+                {[
+                  `Status: ${agent.status}`,
+                  `Model: ${agent.modelFriendly || agent.model}`,
+                  `Role: ${agent.role || '—'}`,
+                  `Tokens: ${formatTokens(agent.tokensUsed, agent.tokensMax)}`,
+                  `Sessions: ${agent.sessionCount ?? 0}`,
+                  `Active: ${agent.activeSessions ?? 0}`,
+                  `Last seen: ${formatTime(agent.lastActiveAt)}`,
+                  `Server: ${serverName}`,
+                  `Floor: ${floorIndex + 1} / ${total}`,
+                ].map((log, i) => (
+                  <div key={i} className="flex gap-3">
+                    <span className="text-white/30 shrink-0">
+                      [{new Date().toISOString().split('T')[1].slice(0, 8)}]
+                    </span>
+                    <span style={{ color: `${hexColor}cc` }}>{log}</span>
+                  </div>
+                ))}
+                <div className="animate-pulse">_</div>
+              </div>
+            </div>
           </div>
         </>
       )}
