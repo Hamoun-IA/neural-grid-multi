@@ -1,0 +1,5 @@
+{
+  "name": "Neural Grid Dashboard",
+  "description": "A 3D cyberpunk-style web dashboard for monitoring team agents.",
+  "requestFramePermissions": []
+}
