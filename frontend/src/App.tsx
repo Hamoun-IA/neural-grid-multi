@@ -4,9 +4,9 @@
  */
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Building } from './components/Building';
-import { ServerPanel } from './components/ServerPanel';
+import InteriorView from './components/InteriorView';
 import { MeshPanel } from './components/MeshPanel';
 import { mockServers } from './data/mockServers';
 import { Server, ServerLayoutItem } from './types';
@@ -90,6 +90,7 @@ export default function App() {
   const [servers, setServers] = useState<Server[]>(mockServers);
   const [apiLive, setApiLive] = useState<boolean>(false);
   const [selectedServer, setSelectedServer] = useState<LayoutServer | null>(null);
+  const [interiorView, setInteriorView] = useState(false);
   const [meshOpen, setMeshOpen] = useState(false);
 
   // Derived layout (servers with 3D positions)
@@ -567,7 +568,7 @@ export default function App() {
               return (
                 <div
                   key={srv.id}
-                  onClick={(e) => { e.stopPropagation(); if (dragDistanceRef.current < 5) setSelectedServer(srv); }}
+                  onClick={(e) => { e.stopPropagation(); if (dragDistanceRef.current < 5) { setSelectedServer(srv); setInteriorView(true); } }}
                   style={{ cursor: 'pointer', position: 'absolute', left: srv.x, top: srv.y, width: srv.w, height: srv.d, transformStyle: 'preserve-3d' }}
                 >
                   <Building
@@ -705,7 +706,7 @@ export default function App() {
               <div
                 key={srv.id}
                 className="w-[120px] md:w-44 shrink-0 md:shrink bg-[#050508]/90 backdrop-blur-md p-3 relative pointer-events-auto transition-all duration-300 flex flex-col justify-start"
-                onClick={() => setSelectedServer(srv)}
+                onClick={() => { setSelectedServer(srv); setInteriorView(true); }}
                 style={{
                   border: `1px solid ${srv.color}40`,
                   boxShadow: hasActiveAgent ? `0 0 20px ${srv.color}20` : isOffline ? '0 0 10px #ff000020' : 'none',
@@ -837,11 +838,15 @@ export default function App() {
         </div>
       </div>
 
-      {/* ── Server Detail Panel ───────────────────────────────────────────── */}
-      <ServerPanel
-        server={selectedServer}
-        onClose={() => setSelectedServer(null)}
-      />
+      {/* ── Interior View (replaces ServerPanel) ─────────────────────────── */}
+      <AnimatePresence>
+        {selectedServer && interiorView && (
+          <InteriorView
+            server={selectedServer}
+            onClose={() => { setInteriorView(false); setSelectedServer(null); }}
+          />
+        )}
+      </AnimatePresence>
 
       {/* ── Mesh Comlink Panel ────────────────────────────────────────────── */}
       {meshOpen && <MeshPanel onClose={() => setMeshOpen(false)} />}
