@@ -16,6 +16,7 @@ const SERVER_COLORS: Record<string, string> = {
   CYBERPUNK: '#00ff00',
   BABOUNETTE: '#ffea00',
   HOMELAB: '#b000ff',
+  TELENOVELAV3: '#ff4444',
 };
 
 function serverColor(serverName: string): string {

@@ -18,11 +18,12 @@ const NUM_CELLS = GRID_SIZE / CELL_SIZE;
 
 // ─── Static position data per server ─────────────────────────────────────
 const SERVER_POSITIONS: Record<string, { x: number; y: number; w: number; d: number; h: number }> = {
-  NOVA:       { x: 14 * CELL_SIZE, y: 14 * CELL_SIZE, w: CELL_SIZE * 2, d: CELL_SIZE * 2, h: 320 },
-  BABOUNETTE: { x:  8 * CELL_SIZE, y:  6 * CELL_SIZE, w: CELL_SIZE * 2, d: CELL_SIZE * 2, h: 250 },
-  CYBERPUNK:  { x: 18 * CELL_SIZE, y:  8 * CELL_SIZE, w: CELL_SIZE * 1.5, d: CELL_SIZE * 1.5, h: 200 },
-  STUDIO:     { x: 10 * CELL_SIZE, y: 12 * CELL_SIZE, w: CELL_SIZE * 1.5, d: CELL_SIZE * 1.5, h: 180 },
-  HOMELAB:    { x:  6 * CELL_SIZE, y: 16 * CELL_SIZE, w: CELL_SIZE * 2,   d: CELL_SIZE * 2,   h: 140 },
+  NOVA:          { x: 14 * CELL_SIZE, y: 14 * CELL_SIZE, w: CELL_SIZE * 2,   d: CELL_SIZE * 2,   h: 320 },
+  BABOUNETTE:    { x:  8 * CELL_SIZE, y:  6 * CELL_SIZE, w: CELL_SIZE * 2,   d: CELL_SIZE * 2,   h: 250 },
+  CYBERPUNK:     { x: 18 * CELL_SIZE, y:  8 * CELL_SIZE, w: CELL_SIZE * 1.5, d: CELL_SIZE * 1.5, h: 200 },
+  STUDIO:        { x: 10 * CELL_SIZE, y: 12 * CELL_SIZE, w: CELL_SIZE * 1.5, d: CELL_SIZE * 1.5, h: 180 },
+  HOMELAB:       { x:  6 * CELL_SIZE, y: 16 * CELL_SIZE, w: CELL_SIZE * 2,   d: CELL_SIZE * 2,   h: 140 },
+  TELENOVELAV3:  { x: 20 * CELL_SIZE, y: 16 * CELL_SIZE, w: CELL_SIZE * 1.5, d: CELL_SIZE * 1.5, h: 160 },
 };
 
 // Static color & role meta (visual identity — not from API)
@@ -31,7 +32,8 @@ const SERVER_META: Record<string, { color: string; port: number; role: string }>
   STUDIO:     { color: '#ff00ff', port: 18789, role: 'Telenovela' },
   CYBERPUNK:  { color: '#00ff00', port: 18789, role: 'Main + Nexus' },
   BABOUNETTE: { color: '#ffea00', port: 18789, role: 'Pixie + assistants' },
-  HOMELAB:    { color: '#b000ff', port: 18789, role: 'Monitoring + Mesh' },
+  HOMELAB:       { color: '#b000ff', port: 18789, role: 'Monitoring + Mesh' },
+  TELENOVELAV3:  { color: '#ff4444', port: 18789, role: 'Telenovela' },
 };
 
 // Build layout entry from a Server object

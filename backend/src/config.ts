@@ -55,6 +55,15 @@ export const SERVERS: ServerConfig[] = [
     token: getToken('TOKEN_HOMELAB'),
     sshUser: null, // local — run commands directly
   },
+  {
+    id: 'TELENOVELAV3',
+    name: 'TelenovelaV3',
+    ip: '100.119.23.69',
+    port: 18789,
+    token: getToken('TOKEN_TELENOVELAV3'),
+    sshUser: 'root',
+    sshSudo: false,
+  },
 ];
 
 export const PORT = parseInt(process.env.PORT ?? '3101', 10);

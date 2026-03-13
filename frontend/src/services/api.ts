@@ -21,6 +21,8 @@ const EMOJI_MAP: Record<string, string> = {
   gribouille: '✏️', courses: '🛒',
   // Homelab
   hub: '🔗',
+  // TelenovelaV3
+  telenovelav3: '🎭',
   // Generic
   assistant: '🤖',
 };

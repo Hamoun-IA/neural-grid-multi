@@ -88,4 +88,16 @@ export const mockServers: Server[] = [
       { id: 'skillking', name: 'Skill King', emoji: '👑', model: 'Opus', status: 'IDLE' },
     ],
   },
+  {
+    id: 'TELENOVELAV3',
+    name: 'TelenovelaV3',
+    color: '#ff4444',
+    ip: '100.119.23.69',
+    port: 18789,
+    role: 'Telenovela',
+    status: 'ONLINE',
+    agents: [
+      { id: 'main', name: 'Main', emoji: '🎭', model: 'Sonnet', status: 'IDLE' },
+    ],
+  },
 ];
