@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { Building } from './components/Building';
 import { ServerPanel } from './components/ServerPanel';
@@ -429,29 +429,68 @@ export default function App() {
 
   // Heartbeat logs removed — only real events shown
 
-  // ── Inter-server connections (only between servers with active agents) ─────
-  useEffect(() => {
-    const createConnection = () => {
-      const activeServers = serverLayout.filter((srv) =>
-        srv.agents.some((a) => a.status === 'ACTIVE'),
-      );
-      if (activeServers.length < 2) return;
+  // ── Inter-server connections (triggered by real mesh events via WebSocket) ──
+  // Helper to trigger a particle connection between two servers
+  const triggerConnection = useCallback((fromServerId: string, toServerId: string) => {
+    const from = serverLayout.find((s) => s.id === fromServerId.toUpperCase());
+    const to = serverLayout.find((s) => s.id === toServerId.toUpperCase());
+    if (!from || !to || from.id === to.id) return;
 
-      const from = activeServers[Math.floor(Math.random() * activeServers.length)];
-      const others = activeServers.filter((s) => s.id !== from.id);
-      if (!others.length) return;
-      const to = others[Math.floor(Math.random() * others.length)];
-
-      const connId = `${from.id}-${to.id}-${Date.now()}`;
-      setConnections((curr) => [...curr, { id: connId, from, to, color: from.color }]);
-      setTimeout(() => {
-        setConnections((curr) => curr.filter((c) => c.id !== connId));
-      }, 2500);
-    };
-
-    const interval = setInterval(createConnection, 3000);
-    return () => clearInterval(interval);
+    const connId = `${from.id}-${to.id}-${Date.now()}`;
+    setConnections((curr) => [...curr, { id: connId, from, to, color: from.color }]);
+    setTimeout(() => {
+      setConnections((curr) => curr.filter((c) => c.id !== connId));
+    }, 2500);
   }, [serverLayout]);
+
+  // Listen to WebSocket for mesh events → trigger particles
+  useEffect(() => {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws`;
+    let ws: WebSocket | null = null;
+    let destroyed = false;
+
+    function connect() {
+      if (destroyed) return;
+      ws = new WebSocket(wsUrl);
+      ws.onmessage = (ev) => {
+        try {
+          const data = JSON.parse(ev.data);
+
+          // One-shot mesh message: particles from → to
+          if (data.type === 'mesh_message' && data.from?.server && data.to?.server) {
+            triggerConnection(data.from.server, data.to.server);
+          }
+
+          // Thread message: particles between participants
+          if (data.type === 'mesh_thread' && data.message) {
+            const msg = data.message;
+            if (msg.from && msg.to) {
+              // Extract server from "agent@SERVER" format
+              const fromServer = msg.from.split('@')[1];
+              const toServer = msg.to.split('@')[1];
+              if (fromServer && toServer) {
+                triggerConnection(fromServer, toServer);
+              }
+            }
+          }
+
+          // Webhook activity: particles from reporting server to HOMELAB (hub)
+          if (data.type === 'server_update' && data.serverId && data.serverId !== 'HOMELAB') {
+            // Only trigger if there are active agents (real activity, not just a poll)
+            const hasActive = (data.agents ?? []).some((a: { status?: string }) => a.status === 'ACTIVE');
+            if (hasActive) {
+              triggerConnection(data.serverId, 'HOMELAB');
+            }
+          }
+        } catch { /* ignore */ }
+      };
+      ws.onclose = () => { if (!destroyed) setTimeout(connect, 5000); };
+    }
+    connect();
+
+    return () => { destroyed = true; ws?.close(); };
+  }, [triggerConnection]);
 
   return (
     <div className="w-screen h-screen bg-[#050505] text-white overflow-hidden font-mono relative selection:bg-cyan-900">
