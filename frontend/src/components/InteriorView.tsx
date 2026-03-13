@@ -202,7 +202,7 @@ const RackTower: React.FC<RackTowerProps> = ({ count, hexColor }) => {
   );
 };
 
-// ─── Detail Panel (matches David's V8 design exactly) ────────────────────────
+// ─── Detail Panel (matches David's Css3dApp design exactly) ──────────────────
 interface DetailPanelProps {
   agent: Agent | null;
   floorIndex: number;
@@ -216,9 +216,9 @@ const DetailPanel: React.FC<DetailPanelProps> = ({
   agent, floorIndex, total, hexColor, serverName, onClose,
 }) => {
   const isActive = agent?.status === 'ACTIVE' || agent?.status === 'THINKING';
-  const progress = agent?.tokensPct ?? 0;
-  const isCyan = hexColor.toLowerCase().includes('0f') || hexColor.toLowerCase().includes('00f');
-  const colorClass = `text-[${hexColor}]`;
+  const statusDot = isActive ? 'bg-green-500 shadow-[0_0_8px_#22c55e]'
+    : agent?.status === 'IDLE' ? 'bg-yellow-500'
+    : 'bg-gray-500';
 
   return (
     <motion.div
@@ -244,95 +244,92 @@ const DetailPanel: React.FC<DetailPanelProps> = ({
         </div>
       ) : (
         <>
-          {/* Agent Header — icon box + name + status */}
-          <div className="flex items-center gap-4 mb-8 mt-2">
+          {/* Agent Header — emoji box + name + role */}
+          <div className="flex items-center gap-4 mb-6 mt-2">
             <div
-              className="w-12 h-12 rounded-lg border flex items-center justify-center"
+              className="w-14 h-14 rounded-xl border flex items-center justify-center text-3xl"
               style={{
                 borderColor: `${hexColor}4d`,
                 backgroundColor: `${hexColor}1a`,
-                color: hexColor,
               }}
             >
-              <Cpu className="w-6 h-6" />
+              {agent.emoji}
             </div>
             <div>
               <h2 className="text-xl font-bold tracking-wider">{agent.name}</h2>
-              <div className="flex items-center gap-2 text-sm text-white/50 font-mono mt-1">
-                <span
-                  className={`w-2 h-2 rounded-full ${isActive ? 'bg-green-500' : 'bg-gray-500'}`}
-                  style={isActive ? { boxShadow: '0 0 6px #22c55e' } : {}}
-                />
-                {agent.status}
+              <div className="text-sm font-mono mt-1" style={{ color: hexColor }}>
+                {agent.role || agent.modelFriendly || agent.model}
               </div>
             </div>
           </div>
 
-          <div className="space-y-6 flex-1 flex flex-col">
-            {/* Metrics: CPU LOAD + MEMORY */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-white/5 rounded-lg p-4 border border-white/5">
-                <div className="text-white/40 text-[10px] mb-1 font-mono tracking-wider">TOKEN USAGE</div>
-                <div className="text-2xl font-light">{Math.round(progress)}%</div>
-              </div>
-              <div className="bg-white/5 rounded-lg p-4 border border-white/5">
-                <div className="text-white/40 text-[10px] mb-1 font-mono tracking-wider">SESSIONS</div>
-                <div className="text-2xl font-light">{agent.sessionCount ?? 0}</div>
+          <div className="space-y-4 flex-1 flex flex-col overflow-y-auto pr-2 pb-4" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.1) transparent' }}>
+            {/* Status Row */}
+            <div className="flex items-center justify-between bg-white/5 p-4 rounded-lg border border-white/5">
+              <span className="text-white/40 text-[10px] font-mono tracking-wider">STATUT</span>
+              <div className="flex items-center gap-2 text-sm font-mono">
+                <span className={`w-2.5 h-2.5 rounded-full ${statusDot}`} />
+                {agent.status}
               </div>
             </div>
 
-            {/* Network I/O Graph */}
-            <div className="bg-white/5 rounded-lg p-4 border border-white/5 h-32 flex flex-col">
-              <div className="text-white/40 text-[10px] mb-2 font-mono flex items-center gap-2 tracking-wider">
-                <Network className="w-3 h-3" /> NETWORK I/O
+            {/* Grid Stats — 2x3 */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-white/5 rounded-lg p-3 border border-white/5">
+                <div className="text-white/40 text-[10px] mb-1 font-mono tracking-wider">MODÈLE</div>
+                <div className="text-sm font-medium">{agent.modelFriendly || agent.model}</div>
               </div>
-              <div className="flex-1 flex items-end gap-1">
-                {Array.from({ length: 24 }).map((_, i) => {
-                  // Deterministic bars from agent id
-                  let seed = 0;
-                  for (let c = 0; c < (agent.id?.length ?? 0); c++) seed += agent.id.charCodeAt(c);
-                  seed = (seed * (i + 1) * 1103515245 + 12345) & 0x7fffffff;
-                  const h = isActive && i >= 20 ? 60 + (seed % 40) : 5 + (seed % 50);
-                  return (
-                    <div
-                      key={i}
-                      className="flex-1 rounded-t-sm"
-                      style={{
-                        height: `${h}%`,
-                        backgroundColor: hexColor,
-                        opacity: isActive && i >= 20 ? 0.7 : 0.3,
-                      }}
-                    />
-                  );
-                })}
+              <div className="bg-white/5 rounded-lg p-3 border border-white/5">
+                <div className="text-white/40 text-[10px] mb-1 font-mono tracking-wider">UPTIME</div>
+                <div className="text-sm font-medium">{formatTime(agent.lastActiveAt)}</div>
+              </div>
+              <div className="bg-white/5 rounded-lg p-3 border border-white/5">
+                <div className="text-white/40 text-[10px] mb-1 font-mono tracking-wider">DERNIÈRE ACTIVITÉ</div>
+                <div className="text-sm font-medium">{formatTime(agent.lastActiveAt)}</div>
+              </div>
+              <div className="bg-white/5 rounded-lg p-3 border border-white/5">
+                <div className="text-white/40 text-[10px] mb-1 font-mono tracking-wider">LATENCE (MOY)</div>
+                <div className="text-sm font-medium">—</div>
+              </div>
+              <div className="bg-white/5 rounded-lg p-3 border border-white/5">
+                <div className="text-white/40 text-[10px] mb-1 font-mono tracking-wider">TOKENS (IN/OUT)</div>
+                <div className="text-sm font-medium">{formatTokens(agent.tokensUsed, agent.tokensMax)}</div>
+              </div>
+              <div className="bg-white/5 rounded-lg p-3 border border-white/5">
+                <div className="text-white/40 text-[10px] mb-1 font-mono tracking-wider">MESSAGES TRAITÉS</div>
+                <div className="text-sm font-medium">{agent.sessionCount ?? 0}</div>
               </div>
             </div>
 
-            {/* System Logs */}
-            <div className="flex-1 flex flex-col min-h-0">
-              <div className="text-white/40 text-[10px] mb-2 font-mono flex items-center gap-2 tracking-wider">
-                <Database className="w-3 h-3" /> AGENT INFO
+            {/* Session Active */}
+            <div className="bg-white/5 rounded-lg p-3 border border-white/5">
+              <div className="text-white/40 text-[10px] mb-1 font-mono tracking-wider">SESSION ACTIVE</div>
+              <div className="text-sm">{isActive ? `Agent ${agent.id}` : 'Aucune'}</div>
+            </div>
+
+            {/* Tâche en cours */}
+            <div className="bg-white/5 rounded-lg p-3 border border-white/5">
+              <div className="text-white/40 text-[10px] mb-1 font-mono tracking-wider">TÂCHE EN COURS</div>
+              <div className="text-sm text-white/80 leading-relaxed">
+                {isActive ? `${agent.name} est en cours de traitement...` : 'En attente de nouvelles instructions.'}
               </div>
-              <div className="bg-black/50 rounded-lg p-4 border border-white/5 flex-1 font-mono text-[10px] leading-relaxed text-white/60 space-y-2 overflow-y-auto">
-                {[
-                  `Status: ${agent.status}`,
-                  `Model: ${agent.modelFriendly || agent.model}`,
-                  `Role: ${agent.role || '—'}`,
-                  `Tokens: ${formatTokens(agent.tokensUsed, agent.tokensMax)}`,
-                  `Sessions: ${agent.sessionCount ?? 0}`,
-                  `Active: ${agent.activeSessions ?? 0}`,
-                  `Last seen: ${formatTime(agent.lastActiveAt)}`,
-                  `Server: ${serverName}`,
-                  `Floor: ${floorIndex + 1} / ${total}`,
-                ].map((log, i) => (
-                  <div key={i} className="flex gap-3">
-                    <span className="text-white/30 shrink-0">
-                      [{new Date().toISOString().split('T')[1].slice(0, 8)}]
-                    </span>
-                    <span style={{ color: `${hexColor}cc` }}>{log}</span>
-                  </div>
-                ))}
-                <div className="animate-pulse">_</div>
+            </div>
+
+            {/* Connexions Mesh */}
+            <div className="bg-white/5 rounded-lg p-3 border border-white/5">
+              <div className="text-white/40 text-[10px] mb-2 font-mono tracking-wider flex items-center gap-2">
+                <Network className="w-3 h-3" /> CONNEXIONS MESH
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <span
+                  className="px-2 py-1 bg-white/5 border rounded text-xs font-mono"
+                  style={{ borderColor: `${hexColor}4d`, color: hexColor }}
+                >
+                  {serverName}
+                </span>
+                {!isActive && (
+                  <span className="text-xs text-white/30 font-mono italic">Aucune connexion active</span>
+                )}
               </div>
             </div>
           </div>
