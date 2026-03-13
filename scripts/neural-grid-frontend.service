@@ -1,0 +1,17 @@
+[Unit]
+Description=Neural Grid Frontend (Vite)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/.openclaw/workspace-hub/Neural-grid
+ExecStart=/usr/bin/npx vite --port 3100 --host 0.0.0.0
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=neural-grid-frontend
+
+[Install]
+WantedBy=multi-user.target

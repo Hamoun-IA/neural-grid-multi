@@ -1,0 +1,17 @@
+[Unit]
+Description=Neural Grid Backend API
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/.openclaw/workspace-backend
+ExecStart=/usr/bin/npx tsx src/index.ts
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=neural-grid-backend
+
+[Install]
+WantedBy=multi-user.target
