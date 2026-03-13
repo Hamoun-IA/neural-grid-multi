@@ -34,17 +34,19 @@ export async function sendMeshMessage(
   if (!target) throw new Error(`Unknown server: ${toServer}`);
 
   // 2. Build SSH command to deliver message via openclaw agent CLI
+  // Use base64 to avoid shell escaping issues with quotes, emojis, etc.
   const prefixedMessage = `[MESH from ${fromAgent}@${fromServer}] ${message}`;
-  const escapedMsg = prefixedMessage.replace(/'/g, "'\\''");
+  const b64 = Buffer.from(prefixedMessage, 'utf-8').toString('base64');
+  const tmpFile = `/tmp/mesh-send-${Date.now()}.txt`;
 
   let cmd: string;
   if (target.sshUser === null) {
     // Local (Homelab)
-    cmd = `openclaw agent --agent ${toAgent} --message '${escapedMsg}' --json --timeout 60`;
+    cmd = `echo '${b64}' | base64 -d > ${tmpFile} && openclaw agent --agent ${toAgent} --message "$(cat ${tmpFile})" --timeout 60; rm -f ${tmpFile}`;
   } else {
     const sshOpts = '-o ConnectTimeout=10 -o StrictHostKeyChecking=no -o BatchMode=yes';
     const sudoPrefix = target.sshSudo ? 'sudo ' : '';
-    cmd = `ssh ${sshOpts} ${target.sshUser}@${target.ip} "${sudoPrefix}openclaw agent --agent ${toAgent} --message '${escapedMsg}' --json --timeout 60"`;
+    cmd = `ssh ${sshOpts} ${target.sshUser}@${target.ip} 'echo "${b64}" | base64 -d > ${tmpFile} && ${sudoPrefix}openclaw agent --agent ${toAgent} --message "$(cat ${tmpFile})" --timeout 60; rm -f ${tmpFile}'`;
   }
 
   const msg: MeshMessage = {
@@ -57,17 +59,11 @@ export async function sendMeshMessage(
   };
 
   try {
-    const { stdout } = await execAsync(cmd, { timeout: 90000 });
-    // Parse JSON response from openclaw agent
-    const jsonMatch = stdout.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const result = JSON.parse(jsonMatch[0]);
-      msg.response = result.payloads?.[0]?.text || 'No response';
-      msg.status = 'delivered';
-    } else {
-      msg.response = stdout.trim().slice(0, 500);
-      msg.status = 'delivered';
-    }
+    const { stdout } = await execAsync(cmd, { timeout: 90000, maxBuffer: 5 * 1024 * 1024 });
+    // Without --json, stdout is the agent's text response
+    const response = stdout.trim();
+    msg.response = response || 'No response';
+    msg.status = 'delivered';
   } catch (err) {
     msg.status = 'failed';
     msg.error = (err as Error).message?.slice(0, 200);
