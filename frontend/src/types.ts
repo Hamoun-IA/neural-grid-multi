@@ -6,6 +6,13 @@ export interface Agent {
   status: 'IDLE' | 'THINKING' | 'FINISHED' | 'ACTIVE';
   sessionCount?: number;
   lastActiveAt?: string;
+  // V2 fields
+  modelFriendly?: string;
+  tokensUsed?: number;
+  tokensMax?: number;
+  tokensPct?: number;
+  role?: string;
+  activeSessions?: number;
 }
 
 export interface Server {
@@ -20,6 +27,15 @@ export interface Server {
   agentCount?: number;
   latencyMs?: number;
   lastSeen?: string;
+  system?: {
+    cpu?: number;
+    memUsedMB?: number;
+    memTotalMB?: number;
+    memPct?: number;
+    diskPct?: number;
+    uptimeHuman?: string;
+    load1?: number;
+  };
 }
 
 /** Server with 3D layout position — used by the scene and ServerPanel */

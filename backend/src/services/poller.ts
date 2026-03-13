@@ -1,4 +1,4 @@
-import type { ServerState, WsEvent } from '../types.js';
+import type { ServerState, WsEvent, SystemMetrics } from '../types.js';
 import { SERVERS, POLL_INTERVAL_MS } from '../config.js';
 import { pollServer } from './gateway.js';
 import type WebSocket from 'ws';
@@ -6,6 +6,9 @@ import type { WebSocketServer } from 'ws';
 
 // In-memory store: server ID → last known state
 const serverStates = new Map<string, ServerState>();
+
+// In-memory store: server ID → system metrics from reporter v2
+const systemMetricsStore = new Map<string, SystemMetrics>();
 
 // WebSocket server reference (set after init)
 let wss: WebSocketServer | null = null;
@@ -25,6 +28,10 @@ export function getServerState(id: string): ServerState | undefined {
 /** Alias used by mesh service — returns same cached states */
 export function getCachedStates(): ServerState[] {
   return Array.from(serverStates.values());
+}
+
+export function getSystemMetrics(id: string): SystemMetrics | undefined {
+  return systemMetricsStore.get(id.toUpperCase());
 }
 
 /**
@@ -48,16 +55,26 @@ export function broadcastEvent(event: WsEvent): void {
 /**
  * Update cached agent activity from a webhook push (no SSH poll needed).
  * Merges agent statuses into the existing server state.
+ * Supports both v1 (basic) and v2 (enriched with tokens, model, system metrics) reporters.
  */
 export function updateCachedAgentActivity(
   serverId: string,
   serverName: string | undefined,
   agents: import('../types.js').AgentInfo[],
   timestamp: string,
+  system?: SystemMetrics,
 ): void {
+  // Store system metrics if provided (reporter v2)
+  if (system) {
+    systemMetricsStore.set(serverId, system);
+  }
+
+  const systemData = systemMetricsStore.get(serverId) ?? null;
+
   const existing = serverStates.get(serverId);
   if (existing) {
     // Merge: webhook agents override existing agent status, keep other fields
+    // v2 enriched fields (model, tokens, role, etc.) are preserved via spread
     const agentMap = new Map(existing.agents.map((a) => [a.id, a]));
     for (const a of agents) {
       agentMap.set(a.id, { ...agentMap.get(a.id), ...a });
@@ -68,6 +85,7 @@ export function updateCachedAgentActivity(
       agents: Array.from(agentMap.values()),
       agentCount: agentMap.size,
       lastSeen: timestamp,
+      system: systemData,
     });
   } else {
     // Server not yet known — create a minimal entry
@@ -80,6 +98,7 @@ export function updateCachedAgentActivity(
       agentCount: agents.length,
       latencyMs: 0,
       lastSeen: timestamp,
+      system: systemData,
     });
   }
 }

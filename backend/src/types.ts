@@ -6,9 +6,59 @@ export interface AgentInfo {
   name: string;
   emoji?: string;
   model: string;
+  modelFriendly?: string;
   status: AgentStatus;
   sessionCount: number;
+  activeSessions?: number;
   lastActiveAt?: string;
+  lastAge?: string;
+  // Reporter v2 enriched fields
+  tokensUsed?: number;
+  tokensMax?: number;
+  tokensPct?: number;
+  role?: string;
+}
+
+// System metrics from reporter v2
+export interface SystemMetrics {
+  cpu?: number;
+  memUsedMB?: number;
+  memTotalMB?: number;
+  memPct?: number;
+  diskUsedGB?: number;
+  diskTotalGB?: number;
+  diskPct?: number;
+  uptimeHuman?: string;
+  load1?: number;
+  load5?: number;
+  load15?: number;
+}
+
+// Agent data shape from reporter v2 webhook payload
+export interface AgentReport {
+  id: string;
+  status: 'ACTIVE' | 'IDLE';
+  lastAge: string;
+  model?: string;
+  modelFriendly?: string;
+  tokensUsed?: number;
+  tokensMax?: number;
+  tokensPct?: number;
+  role?: string;
+  emoji?: string;
+  sessionCount?: number;
+  activeSessions?: number;
+}
+
+// Full report payload from reporter v2
+export interface ActivityReport {
+  serverId: string;
+  agents: AgentReport[];
+  agentCount?: number;
+  activeCount?: number;
+  system?: SystemMetrics;
+  reporterVersion?: number;
+  timestamp?: string;
 }
 
 export interface ServerState {
@@ -21,6 +71,7 @@ export interface ServerState {
   latencyMs: number | null;
   lastSeen: string | null;
   error?: string;
+  system?: SystemMetrics | null;
 }
 
 export interface ServerConfig {
@@ -74,6 +125,8 @@ export interface WsServerUpdateEvent {
   agents: AgentInfo[];
   latencyMs: number | null;
   timestamp: string;
+  system?: SystemMetrics | null;
+  reporterVersion?: number;
 }
 
 export interface WsHeartbeatEvent {

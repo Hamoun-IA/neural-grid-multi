@@ -2,6 +2,9 @@ import dotenv from 'dotenv';
 import path from 'path';
 import type { ServerConfig } from './types.js';
 
+// Re-export v2 interfaces so they can be imported from config if needed
+export type { AgentReport, SystemMetrics, ActivityReport } from './types.js';
+
 dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
 function getToken(key: string): string {
