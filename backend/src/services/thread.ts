@@ -64,7 +64,7 @@ async function sendToAgent(
   const sudoPrefix = server.sshSudo ? 'sudo ' : '';
 
   // Build the remote script: decode b64 → temp file → openclaw reads it → cleanup
-  const remoteScript = `echo '${b64}' | base64 -d > ${tmpFile} && ${sudoPrefix}openclaw agent --agent ${agentId} --session-id "mesh-${threadId}" --message "$(cat ${tmpFile})" --json --timeout 300; rm -f ${tmpFile}`;
+  const remoteScript = `echo '${b64}' | base64 -d > ${tmpFile} && ${sudoPrefix}openclaw agent --agent ${agentId} --session-id "mesh-${threadId}" --message "$(cat ${tmpFile})" --timeout 300; rm -f ${tmpFile}`;
 
   let fullCmd: string;
   if (server.sshUser === null) {
@@ -77,26 +77,10 @@ async function sendToAgent(
     fullCmd = `ssh ${sshOpts} ${server.sshUser}@${server.ip} '${remoteScript}'`;
   }
 
-  const { stdout } = await execAsync(fullCmd, { timeout: 320_000 });
+  const { stdout } = await execAsync(fullCmd, { timeout: 320_000, maxBuffer: 5 * 1024 * 1024 });
 
-  // Parse JSON response from openclaw agent --json
-  // Structure: { runId, status, result: { payloads: [{ text }] } }
-  const jsonMatch = stdout.match(/\{[\s\S]*\}/);
-  if (jsonMatch) {
-    try {
-      const result = JSON.parse(jsonMatch[0]);
-      // openclaw agent --json returns nested: result.result.payloads[0].text
-      return (
-        result.result?.payloads?.[0]?.text ??
-        result.payloads?.[0]?.text ??
-        result.response ??
-        stdout.trim().slice(0, 2000)
-      );
-    } catch {
-      // fall through
-    }
-  }
-  return stdout.trim().slice(0, 2000);
+  // Without --json, stdout is just the agent's text response
+  return stdout.trim();
 }
 
 // ─── Inactivity check ─────────────────────────────────────────────────────────
@@ -285,9 +269,9 @@ async function runAutonomousLoop(thread: MeshThread): Promise<void> {
     const sudoN = server.sshSudo ? 'sudo ' : '';
     const script = `echo '${b64n}' | base64 -d > ${tmpN} && ${sudoN}openclaw agent --agent ${agentId} --message "$(cat ${tmpN})" --timeout 300; rm -f ${tmpN}`;
     if (server.sshUser === null) {
-      await execAsync(script, { timeout: 320_000 });
+      await execAsync(script, { timeout: 320_000, maxBuffer: 10 * 1024 * 1024 });
     } else {
-      await execAsync(`ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o BatchMode=yes ${server.sshUser}@${server.ip} '${script}'`, { timeout: 320_000 });
+      await execAsync(`ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o BatchMode=yes ${server.sshUser}@${server.ip} '${script}'`, { timeout: 320_000, maxBuffer: 10 * 1024 * 1024 });
     }
   };
 
