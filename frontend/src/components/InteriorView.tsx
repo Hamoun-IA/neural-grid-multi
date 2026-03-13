@@ -1,18 +1,18 @@
 /**
- * InteriorView V5 — Isometric Server Tower
- * 2.5D stacked boxes with front/top/side faces.
- * Matches the reference: vertical tower, wireframe neon, agent details panel.
+ * InteriorView V6 — Rotatable 3D Tower
+ * Real CSS 3D cubes stacked vertically (Y axis), drag-to-rotate, scroll-to-zoom.
+ * Each floor = 6-face cube. Click a floor for agent details in side panel.
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ServerLayoutItem, Agent } from '../types';
 
 // ─── Dimensions ───────────────────────────────────────────────────────────────
-const FLOOR_W = 320;   // front face width
-const FLOOR_H = 56;    // front face height (each floor)
-const DEPTH = 32;      // isometric depth (top + side face size)
-const FLOOR_GAP = 4;   // gap between floors
+const CUBE_W = 300;    // width  (X axis)
+const CUBE_H = 48;     // height (Y axis) per floor
+const CUBE_D = 200;    // depth  (Z axis)
+const GAP = 6;         // gap between floors
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function hexToRgb(hex: string): string {
@@ -38,8 +38,15 @@ function useIsMobile(): boolean {
   return m;
 }
 
-// ─── Floor Box (isometric 2.5D) ──────────────────────────────────────────────
-interface FloorBoxProps {
+// ─── Cube Face (shared styles) ────────────────────────────────────────────────
+const faceBase: React.CSSProperties = {
+  position: 'absolute',
+  top: '50%', left: '50%',
+  backfaceVisibility: 'hidden',
+};
+
+// ─── Floor Cube ───────────────────────────────────────────────────────────────
+interface FloorCubeProps {
   agent: Agent;
   index: number;
   total: number;
@@ -49,205 +56,194 @@ interface FloorBoxProps {
   onClick: () => void;
 }
 
-const FloorBox: React.FC<FloorBoxProps> = ({ agent, index, total, color, rgb, isSelected, onClick }) => {
+const FloorCube: React.FC<FloorCubeProps> = ({ agent, index, total, color, rgb, isSelected, onClick }) => {
   const isActive = agent.status === 'ACTIVE' || agent.status === 'THINKING';
+  const yPos = -(index * (CUBE_H + GAP));
 
-  const frontBg = isActive
-    ? `linear-gradient(135deg, rgba(${rgb}, 0.18) 0%, rgba(${rgb}, 0.06) 100%)`
-    : 'linear-gradient(135deg, rgba(12, 12, 25, 0.9) 0%, rgba(8, 8, 18, 0.9) 100%)';
-  const topBg = isActive
-    ? `rgba(${rgb}, 0.12)`
-    : 'rgba(15, 15, 28, 0.7)';
-  const sideBg = isActive
-    ? `rgba(${rgb}, 0.08)`
-    : 'rgba(10, 10, 22, 0.7)';
-
-  const borderColor = isSelected
-    ? `rgba(${rgb}, 0.9)`
-    : isActive
-      ? `rgba(${rgb}, 0.5)`
-      : 'rgba(80, 80, 120, 0.2)';
-
-  const glowStyle = isActive ? `0 0 20px rgba(${rgb}, 0.15), inset 0 0 20px rgba(${rgb}, 0.05)` : 'none';
-  const selectedGlow = isSelected ? `0 0 30px rgba(${rgb}, 0.3), inset 0 0 25px rgba(${rgb}, 0.1)` : glowStyle;
+  const borderCol = isSelected
+    ? `rgba(${rgb}, 0.85)`
+    : isActive ? `rgba(${rgb}, 0.4)` : 'rgba(80, 80, 120, 0.18)';
+  const activeBg = `rgba(${rgb}, 0.08)`;
+  const idleBg = 'rgba(8, 8, 18, 0.75)';
+  const bg = isActive ? activeBg : idleBg;
+  const topBg = isActive ? `rgba(${rgb}, 0.12)` : 'rgba(12, 12, 24, 0.6)';
+  const sideBg = isActive ? `rgba(${rgb}, 0.06)` : 'rgba(10, 10, 20, 0.6)';
 
   return (
     <motion.div
-      initial={{ opacity: 0, x: -30 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ delay: (total - 1 - index) * 0.05, duration: 0.35 }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ delay: index * 0.05, duration: 0.4 }}
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
       style={{
-        position: 'relative',
-        width: FLOOR_W + DEPTH,
-        height: FLOOR_H + DEPTH,
-        marginBottom: FLOOR_GAP,
+        position: 'absolute',
+        transformStyle: 'preserve-3d',
+        transform: `translateY(${yPos}px)`,
+        width: 0, height: 0, // anchor point at center
         cursor: 'pointer',
-        filter: isSelected ? `drop-shadow(0 0 12px rgba(${rgb}, 0.3))` : 'none',
       }}
-      onClick={onClick}
-      whileHover={{ x: 4 }}
     >
-      {/* ── TOP face (parallelogram) ── */}
+      {/* ── FRONT face ── */}
       <div style={{
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        width: FLOOR_W,
-        height: DEPTH,
-        background: topBg,
-        borderTop: `1px solid ${borderColor}`,
-        borderLeft: `1px solid ${borderColor}`,
-        borderRight: `1px solid ${borderColor}`,
-        transform: 'skewX(-45deg)',
-        transformOrigin: 'bottom left',
-      }}>
-        {/* Grid pattern on top */}
-        <div style={{
-          position: 'absolute', inset: 0, opacity: isActive ? 0.2 : 0.05,
-          backgroundImage: `radial-gradient(rgba(${rgb}, 0.8) 1px, transparent 1px)`,
-          backgroundSize: '8px 8px',
-        }} />
-      </div>
-
-      {/* ── FRONT face (main rectangle) ── */}
-      <div style={{
-        position: 'absolute',
-        top: DEPTH,
-        left: 0,
-        width: FLOOR_W,
-        height: FLOOR_H,
-        background: frontBg,
-        borderLeft: `1px solid ${borderColor}`,
-        borderBottom: `1px solid ${borderColor}`,
-        borderRight: `1px solid ${borderColor}`,
-        boxShadow: selectedGlow,
-        display: 'flex',
-        alignItems: 'center',
-        padding: '0 16px',
-        gap: 12,
+        ...faceBase,
+        width: CUBE_W, height: CUBE_H,
+        marginLeft: -CUBE_W / 2, marginTop: -CUBE_H / 2,
+        transform: `translateZ(${CUBE_D / 2}px)`,
+        background: bg,
+        border: `1px solid ${borderCol}`,
+        boxShadow: isSelected
+          ? `0 0 25px rgba(${rgb}, 0.3), inset 0 0 20px rgba(${rgb}, 0.08)`
+          : isActive ? `inset 0 0 15px rgba(${rgb}, 0.06)` : 'none',
+        display: 'flex', alignItems: 'center', padding: '0 14px', gap: 10,
         overflow: 'hidden',
       }}>
-        {/* Neon bar on left */}
+        {/* Neon left bar */}
         {isActive && (
           <div style={{
-            position: 'absolute', left: 0, top: 0, bottom: 0,
-            width: 3, background: color,
-            boxShadow: `0 0 8px ${color}, 0 0 16px ${color}`,
+            position: 'absolute', left: 0, top: 0, bottom: 0, width: 3,
+            background: color, boxShadow: `0 0 8px ${color}, 0 0 16px ${color}`,
           }} />
         )}
-
         {/* Floor number */}
-        <div style={{
-          fontSize: 9, color: isActive ? color : '#444',
-          fontWeight: 600, letterSpacing: '0.1em',
-          minWidth: 28, textAlign: 'center',
-          textShadow: isActive ? `0 0 6px rgba(${rgb}, 0.5)` : 'none',
+        <span style={{
+          fontSize: 8, color: isActive ? color : '#444', fontWeight: 600,
+          letterSpacing: '0.1em', minWidth: 26, textAlign: 'center',
+          textShadow: isActive ? `0 0 5px rgba(${rgb}, 0.5)` : 'none',
         }}>
           FL.{index + 1}
-        </div>
-
+        </span>
         {/* Agent info */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
-          <span style={{ fontSize: 18 }}>{agent.emoji}</span>
-          <div>
-            <div style={{
-              fontSize: 11, fontWeight: 600, color: '#fff',
-              textShadow: isActive ? `0 0 6px rgba(${rgb}, 0.4)` : 'none',
-              letterSpacing: '0.06em', textTransform: 'uppercase',
-            }}>
-              {agent.name}
-            </div>
-            <div style={{
-              fontSize: 8, color: isActive ? color : '#555',
-              letterSpacing: '0.08em', marginTop: 2,
-            }}>
-              {agent.model}
-            </div>
+        <span style={{ fontSize: 16 }}>{agent.emoji}</span>
+        <div style={{ flex: 1 }}>
+          <div style={{
+            fontSize: 11, fontWeight: 600, color: '#fff',
+            letterSpacing: '0.06em', textTransform: 'uppercase',
+            textShadow: isActive ? `0 0 5px rgba(${rgb}, 0.4)` : 'none',
+          }}>
+            {agent.name}
+          </div>
+          <div style={{ fontSize: 8, color: isActive ? color : '#555', marginTop: 1, letterSpacing: '0.06em' }}>
+            {agent.model}
           </div>
         </div>
-
-        {/* Status indicators (dots + bar) */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {/* Status dots */}
-          <div style={{ display: 'flex', gap: 4 }}>
-            {[0, 1, 2].map((d) => (
-              <motion.div
-                key={d}
-                animate={isActive ? { opacity: [0.4, 1, 0.4] } : {}}
-                transition={isActive ? { duration: 1.5, delay: d * 0.3, repeat: Infinity } : {}}
-                style={{
-                  width: 5, height: 5, borderRadius: '50%',
-                  backgroundColor: isActive ? color : '#333',
-                  boxShadow: isActive ? `0 0 4px ${color}` : 'none',
-                }}
-              />
-            ))}
-          </div>
-
-          {/* Activity bar */}
-          {isActive && (
+        {/* Status dots */}
+        <div style={{ display: 'flex', gap: 4 }}>
+          {[0, 1, 2].map(d => (
             <motion.div
-              animate={{ width: ['30%', '85%', '60%', '90%', '30%'] }}
-              transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+              key={d}
+              animate={isActive ? { opacity: [0.3, 1, 0.3] } : {}}
+              transition={isActive ? { duration: 1.5, delay: d * 0.3, repeat: Infinity } : {}}
               style={{
-                width: 50, height: 4, borderRadius: 2,
-                background: `linear-gradient(90deg, ${color}, rgba(${rgb}, 0.3))`,
-                boxShadow: `0 0 6px ${color}`,
-              }}
-            />
-          )}
-        </div>
-
-        {/* Scanlines overlay */}
-        <div style={{
-          position: 'absolute', inset: 0, pointerEvents: 'none', opacity: 0.08,
-          backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,0.03) 2px, rgba(255,255,255,0.03) 3px)',
-        }} />
-      </div>
-
-      {/* ── RIGHT SIDE face (parallelogram) ── */}
-      <div style={{
-        position: 'absolute',
-        top: 0,
-        right: 0,
-        width: DEPTH,
-        height: FLOOR_H,
-        background: sideBg,
-        borderTop: `1px solid ${borderColor}`,
-        borderRight: `1px solid ${borderColor}`,
-        borderBottom: `1px solid ${borderColor}`,
-        transform: 'skewY(-45deg)',
-        transformOrigin: 'top left',
-      }}>
-        {/* Vertical lines pattern */}
-        <div style={{
-          position: 'absolute', inset: 0, opacity: isActive ? 0.15 : 0.05,
-          backgroundImage: `repeating-linear-gradient(90deg, transparent 0px, transparent 5px, rgba(${rgb}, 0.5) 5px, rgba(${rgb}, 0.5) 6px)`,
-        }} />
-      </div>
-
-      {/* Glow particles for active floors */}
-      {isActive && (
-        <>
-          {[0, 1, 2].map((p) => (
-            <motion.div
-              key={p}
-              animate={{
-                x: [FLOOR_W * 0.3 + p * 60, FLOOR_W * 0.4 + p * 50, FLOOR_W * 0.3 + p * 60],
-                y: [DEPTH + 10 + p * 8, DEPTH + FLOOR_H - 15, DEPTH + 10 + p * 8],
-                opacity: [0, 0.6, 0],
-              }}
-              transition={{ duration: 2 + p * 0.5, repeat: Infinity, delay: p * 0.7 }}
-              style={{
-                position: 'absolute',
-                width: 3, height: 3, borderRadius: '50%',
-                backgroundColor: color,
-                boxShadow: `0 0 6px ${color}`,
-                pointerEvents: 'none',
+                width: 5, height: 5, borderRadius: '50%',
+                backgroundColor: isActive ? color : '#333',
+                boxShadow: isActive ? `0 0 4px ${color}` : 'none',
               }}
             />
           ))}
-        </>
+        </div>
+        {/* Scanlines */}
+        <div style={{
+          position: 'absolute', inset: 0, pointerEvents: 'none', opacity: 0.06,
+          backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,0.04) 2px, rgba(255,255,255,0.04) 3px)',
+        }} />
+      </div>
+
+      {/* ── BACK face ── */}
+      <div style={{
+        ...faceBase,
+        width: CUBE_W, height: CUBE_H,
+        marginLeft: -CUBE_W / 2, marginTop: -CUBE_H / 2,
+        transform: `translateZ(${-CUBE_D / 2}px) rotateY(180deg)`,
+        background: isActive ? `rgba(${rgb}, 0.04)` : 'rgba(6, 6, 14, 0.6)',
+        border: `1px solid ${borderCol}`,
+      }} />
+
+      {/* ── RIGHT face ── */}
+      <div style={{
+        ...faceBase,
+        width: CUBE_D, height: CUBE_H,
+        marginLeft: -CUBE_D / 2, marginTop: -CUBE_H / 2,
+        transform: `rotateY(90deg) translateZ(${CUBE_W / 2}px)`,
+        background: sideBg,
+        border: `1px solid ${borderCol}`,
+      }}>
+        <div style={{
+          position: 'absolute', inset: 0, opacity: isActive ? 0.12 : 0.04,
+          backgroundImage: `repeating-linear-gradient(90deg, transparent 0, transparent 6px, rgba(${rgb}, 0.4) 6px, rgba(${rgb}, 0.4) 7px)`,
+        }} />
+      </div>
+
+      {/* ── LEFT face ── */}
+      <div style={{
+        ...faceBase,
+        width: CUBE_D, height: CUBE_H,
+        marginLeft: -CUBE_D / 2, marginTop: -CUBE_H / 2,
+        transform: `rotateY(-90deg) translateZ(${CUBE_W / 2}px)`,
+        background: sideBg,
+        border: `1px solid ${borderCol}`,
+      }}>
+        <div style={{
+          position: 'absolute', inset: 0, opacity: isActive ? 0.12 : 0.04,
+          backgroundImage: `radial-gradient(rgba(${rgb}, 0.5) 1px, transparent 1px)`,
+          backgroundSize: '6px 6px',
+        }} />
+      </div>
+
+      {/* ── TOP face ── */}
+      <div style={{
+        ...faceBase,
+        width: CUBE_W, height: CUBE_D,
+        marginLeft: -CUBE_W / 2, marginTop: -CUBE_D / 2,
+        transform: `rotateX(90deg) translateZ(${CUBE_H / 2}px)`,
+        background: topBg,
+        border: `1px solid ${borderCol}`,
+        boxShadow: isActive ? `0 0 20px rgba(${rgb}, 0.15)` : 'none',
+      }}>
+        <div style={{
+          position: 'absolute', inset: 0, opacity: isActive ? 0.2 : 0.05,
+          backgroundImage: `radial-gradient(rgba(${rgb}, 0.6) 1px, transparent 1px)`,
+          backgroundSize: '8px 8px',
+        }} />
+        {/* Agent name on top face */}
+        <div style={{
+          position: 'absolute', inset: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+        }}>
+          <span style={{ fontSize: 14 }}>{agent.emoji}</span>
+          <span style={{
+            fontSize: 9, fontWeight: 600, color: isActive ? '#fff' : '#555',
+            letterSpacing: '0.08em', textTransform: 'uppercase',
+            textShadow: isActive ? `0 0 6px rgba(${rgb}, 0.5)` : 'none',
+          }}>
+            {agent.name}
+          </span>
+        </div>
+      </div>
+
+      {/* ── BOTTOM face ── */}
+      <div style={{
+        ...faceBase,
+        width: CUBE_W, height: CUBE_D,
+        marginLeft: -CUBE_W / 2, marginTop: -CUBE_D / 2,
+        transform: `rotateX(-90deg) translateZ(${CUBE_H / 2}px)`,
+        background: 'rgba(5, 5, 12, 0.5)',
+        border: `1px solid rgba(60, 60, 80, 0.08)`,
+      }} />
+
+      {/* Glow effect for active */}
+      {isActive && (
+        <motion.div
+          animate={{ opacity: [0.1, 0.25, 0.1] }}
+          transition={{ duration: 2.5, repeat: Infinity }}
+          style={{
+            ...faceBase,
+            width: CUBE_W + 10, height: CUBE_D + 10,
+            marginLeft: -(CUBE_W + 10) / 2, marginTop: -(CUBE_D + 10) / 2,
+            transform: `rotateX(90deg) translateZ(${CUBE_H / 2 + 1}px)`,
+            background: `radial-gradient(ellipse, rgba(${rgb}, 0.2), transparent 70%)`,
+            pointerEvents: 'none', border: 'none',
+          }}
+        />
       )}
     </motion.div>
   );
@@ -280,7 +276,7 @@ const DetailPanel: React.FC<DetailPanelProps> = ({
 
   const panelStyle: React.CSSProperties = isMobile
     ? {
-        position: 'absolute', bottom: 0, left: 0, right: 0, maxHeight: '45%',
+        position: 'absolute', bottom: 0, left: 0, right: 0, maxHeight: '40%',
         background: 'rgba(5, 5, 10, 0.97)', borderTop: `1px solid rgba(${rgb}, 0.3)`,
         backdropFilter: 'blur(12px)', overflowY: 'auto', zIndex: 20,
       }
@@ -308,7 +304,6 @@ const DetailPanel: React.FC<DetailPanelProps> = ({
         <div key={i} style={{ position: 'absolute', width: 10, height: 10, ...s, zIndex: 5 }} />
       ))}
 
-      {/* Scanlines */}
       <div style={{
         position: 'absolute', inset: 0, pointerEvents: 'none', opacity: 0.3,
         backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,0,0,0.12) 3px, rgba(0,0,0,0.12) 4px)',
@@ -320,18 +315,18 @@ const DetailPanel: React.FC<DetailPanelProps> = ({
           justifyContent: 'center', height: '100%', gap: 8,
         }}>
           <div style={{ fontSize: 10, color: '#444', letterSpacing: '0.2em' }}>SELECT A FLOOR</div>
-          <div style={{ fontSize: 9, color: '#333', letterSpacing: '0.1em' }}>TO INSPECT AGENT</div>
+          <div style={{ fontSize: 9, color: '#333' }}>TO INSPECT AGENT</div>
         </div>
       ) : (
         <div style={{ padding: 20, position: 'relative', zIndex: 2 }}>
           {/* Agent header */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 24 }}>
-            <div style={{
+            <span style={{
               fontSize: 40, lineHeight: 1,
               filter: agent.status === 'ACTIVE' ? `drop-shadow(0 0 8px rgba(${rgb}, 0.4))` : 'none',
             }}>
               {agent.emoji}
-            </div>
+            </span>
             <div>
               <div style={{
                 fontSize: 16, fontWeight: 700, color: '#fff', letterSpacing: '0.08em',
@@ -341,7 +336,7 @@ const DetailPanel: React.FC<DetailPanelProps> = ({
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
                 <motion.span
-                  animate={agent.status === 'ACTIVE' ? { scale: [1, 1.3, 1], opacity: [1, 0.6, 1] } : {}}
+                  animate={agent.status === 'ACTIVE' ? { scale: [1, 1.3, 1] } : {}}
                   transition={agent.status === 'ACTIVE' ? { duration: 2, repeat: Infinity } : {}}
                   style={{
                     width: 8, height: 8, borderRadius: '50%', display: 'inline-block',
@@ -389,13 +384,12 @@ const DetailPanel: React.FC<DetailPanelProps> = ({
                   backgroundColor: color,
                   opacity: i >= 20 && agent.status === 'ACTIVE' ? 0.8 : 0.2,
                   boxShadow: i >= 20 && agent.status === 'ACTIVE' ? `0 0 3px ${color}` : 'none',
-                  transition: 'all 0.3s',
                 }} />
               ))}
             </div>
           </div>
 
-          {/* Agent info */}
+          {/* Info */}
           <div>
             <div style={{ fontSize: 9, color: '#555', letterSpacing: '0.12em', marginBottom: 8 }}>📋 AGENT INFO</div>
             {[
@@ -430,8 +424,15 @@ interface InteriorViewProps {
 export default function InteriorView({ server, onClose }: InteriorViewProps) {
   const isMobile = useIsMobile();
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
+  const [rotX, setRotX] = useState(60);   // same starting angle as main dashboard
+  const [rotY, setRotY] = useState(0);
+  const [rotZ, setRotZ] = useState(-45);  // match isometric view
+  const [zoom, setZoom] = useState(0.75);
+  const [dragging, setDragging] = useState(false);
+  const [dragMode, setDragMode] = useState<'rotate' | 'none'>('none');
+  const lastPos = useRef({ x: 0, y: 0 });
+  const dragDist = useRef(0);
 
-  // Escape to close
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', h);
@@ -443,7 +444,7 @@ export default function InteriorView({ server, onClose }: InteriorViewProps) {
   const color = server.color;
   const rgb = hexToRgb(color);
 
-  // Sort: ACTIVE at top (last in array = rendered last = top of tower)
+  // Sort: ACTIVE at top
   const sortedAgents = [...server.agents].sort((a, b) => {
     const order: Record<string, number> = { ACTIVE: 3, THINKING: 2, FINISHED: 1, IDLE: 0 };
     return (order[a.status] ?? 0) - (order[b.status] ?? 0);
@@ -451,6 +452,47 @@ export default function InteriorView({ server, onClose }: InteriorViewProps) {
 
   const selectedAgent = selectedIdx !== null ? sortedAgents[selectedIdx] : null;
   const statusColor = server.status === 'ONLINE' ? '#22c55e' : server.status === 'OFFLINE' ? '#ff4444' : '#ffaa00';
+  const towerTotalH = sortedAgents.length * (CUBE_H + GAP);
+
+  // ── Mouse/Touch handlers (same as main dashboard) ──
+  const handleMouseDown = (e: React.MouseEvent) => {
+    setDragging(true);
+    setDragMode('rotate');
+    lastPos.current = { x: e.clientX, y: e.clientY };
+    dragDist.current = 0;
+  };
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!dragging) return;
+    const dx = e.clientX - lastPos.current.x;
+    const dy = e.clientY - lastPos.current.y;
+    dragDist.current += Math.abs(dx) + Math.abs(dy);
+    setRotX(prev => Math.max(20, Math.min(80, prev - dy * 0.3)));
+    setRotZ(prev => prev - dx * 0.3);
+    lastPos.current = { x: e.clientX, y: e.clientY };
+  };
+  const handleMouseUp = () => { setDragging(false); setDragMode('none'); };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length !== 1) return;
+    lastPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    dragDist.current = 0;
+    setDragging(true);
+    setDragMode('rotate');
+  };
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!dragging || e.touches.length !== 1) return;
+    const dx = e.touches[0].clientX - lastPos.current.x;
+    const dy = e.touches[0].clientY - lastPos.current.y;
+    dragDist.current += Math.abs(dx) + Math.abs(dy);
+    setRotX(prev => Math.max(20, Math.min(80, prev - dy * 0.3)));
+    setRotZ(prev => prev - dx * 0.3);
+    lastPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  };
+  const handleTouchEnd = () => { setDragging(false); setDragMode('none'); };
+
+  const handleWheel = (e: React.WheelEvent) => {
+    setZoom(prev => Math.max(0.3, Math.min(2, prev + e.deltaY * -0.001)));
+  };
 
   return (
     <motion.div
@@ -464,10 +506,8 @@ export default function InteriorView({ server, onClose }: InteriorViewProps) {
         display: 'flex', flexDirection: isMobile ? 'column' : 'row',
       }}
     >
-      {/* ── Header (absolute, top-left) ── */}
-      <div style={{
-        position: 'absolute', top: 16, left: 20, zIndex: 30,
-      }}>
+      {/* ── Header ── */}
+      <div style={{ position: 'absolute', top: 16, left: 20, zIndex: 30 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <button
             onClick={onClose}
@@ -496,13 +536,13 @@ export default function InteriorView({ server, onClose }: InteriorViewProps) {
               SERVER TOWER — {server.name.toUpperCase()}
             </div>
             <div style={{ fontSize: 9, color: '#444', letterSpacing: '0.08em', marginTop: 3 }}>
-              {server.role} │ CROSS-SECTION VIEW
+              {server.role} │ Drag to rotate │ Scroll to zoom
             </div>
           </div>
         </div>
       </div>
 
-      {/* ── Status (top-right, offset for panel) ── */}
+      {/* ── Status (top-right) ── */}
       <div style={{
         position: 'absolute', top: 16, right: isMobile ? 16 : 320, zIndex: 30,
         display: 'flex', alignItems: 'center', gap: 10,
@@ -514,17 +554,26 @@ export default function InteriorView({ server, onClose }: InteriorViewProps) {
         <span style={{ fontSize: 10, color: statusColor, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
           {server.status}
         </span>
-        {server.latencyMs !== undefined && (
-          <span style={{ fontSize: 9, color: '#555' }}>{server.latencyMs}ms</span>
-        )}
         <span style={{ fontSize: 9, color: '#444' }}>{server.agents.length} AGENTS</span>
       </div>
 
-      {/* ── Tower Area ── */}
-      <div style={{
-        flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        overflow: 'auto', position: 'relative', padding: '80px 20px 20px',
-      }}>
+      {/* ── 3D Tower Area ── */}
+      <div
+        style={{
+          flex: 1, position: 'relative', overflow: 'hidden',
+          perspective: '1500px',
+          cursor: dragMode === 'rotate' ? 'grabbing' : 'grab',
+        }}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onWheel={handleWheel}
+        onContextMenu={(e) => e.preventDefault()}
+      >
         {/* Grid background */}
         <div style={{
           position: 'absolute', inset: 0, opacity: 0.03, pointerEvents: 'none',
@@ -532,96 +581,87 @@ export default function InteriorView({ server, onClose }: InteriorViewProps) {
           backgroundSize: '50px 50px',
         }} />
 
-        {/* Tower stack — rendered bottom to top */}
-        <motion.div
-          initial={{ y: 50, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ type: 'spring', stiffness: 200, damping: 22 }}
-          style={{
-            display: 'flex', flexDirection: 'column-reverse',
-            alignItems: 'flex-start',
-          }}
-        >
-          {/* Base platform */}
-          <div style={{
-            position: 'relative',
-            width: FLOOR_W + DEPTH,
-            marginTop: 2,
-          }}>
-            {/* Platform front */}
-            <div style={{
-              width: FLOOR_W, height: 20,
-              background: '#0a0a18',
-              borderLeft: `1px solid rgba(${rgb}, 0.25)`,
-              borderBottom: `1px solid rgba(${rgb}, 0.25)`,
-              borderRight: `1px solid rgba(${rgb}, 0.25)`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 20,
-              fontSize: 8, color: '#444', letterSpacing: '0.1em',
-            }}>
-              <span>{server.ip}</span>
-              <span>PORT {server.port}</span>
-              <span>{server.agents.length} AGENTS</span>
-            </div>
-            {/* Platform top */}
-            <div style={{
-              position: 'absolute', top: -DEPTH, left: 0,
-              width: FLOOR_W, height: DEPTH,
-              background: 'rgba(8, 8, 20, 0.5)',
-              borderTop: `1px solid rgba(${rgb}, 0.15)`,
-              borderLeft: `1px solid rgba(${rgb}, 0.15)`,
-              transform: 'skewX(-45deg)', transformOrigin: 'bottom left',
-            }}>
-              <div style={{
-                position: 'absolute', inset: 0, opacity: 0.08,
-                backgroundImage: `repeating-linear-gradient(90deg, transparent 0px, transparent 4px, rgba(${rgb}, 0.4) 4px, rgba(${rgb}, 0.4) 5px)`,
-              }} />
-            </div>
-            {/* Platform side */}
-            <div style={{
-              position: 'absolute', top: -DEPTH, right: 0,
-              width: DEPTH, height: 20,
-              background: 'rgba(6, 6, 16, 0.6)',
-              borderTop: `1px solid rgba(${rgb}, 0.15)`,
-              borderRight: `1px solid rgba(${rgb}, 0.15)`,
-              transform: 'skewY(-45deg)', transformOrigin: 'top left',
-            }} />
-          </div>
-
-          {/* Floor boxes */}
-          {sortedAgents.map((agent, i) => (
-            <FloorBox
-              key={agent.id}
-              agent={agent}
-              index={i}
-              total={sortedAgents.length}
-              color={color}
-              rgb={rgb}
-              isSelected={selectedIdx === i}
-              onClick={() => setSelectedIdx(prev => prev === i ? null : i)}
-            />
-          ))}
-
-          {/* Antenna on top */}
+        {/* 3D Scene — same transform style as main dashboard */}
+        <div style={{
+          position: 'absolute', inset: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ delay: sortedAgents.length * 0.05 + 0.3 }}
+            transition={{ duration: 0.5 }}
             style={{
-              display: 'flex', flexDirection: 'column', alignItems: 'center',
-              marginBottom: 4, marginLeft: FLOOR_W / 2,
+              transformStyle: 'preserve-3d',
+              transform: `scale(${zoom}) rotateX(${rotX}deg) rotateZ(${rotZ}deg)`,
             }}
           >
-            <motion.div
-              animate={{ opacity: [0.3, 1, 0.3] }}
-              transition={{ duration: 1.5, repeat: Infinity }}
-              style={{
-                width: 8, height: 8, borderRadius: '50%',
-                backgroundColor: color, boxShadow: `0 0 12px ${color}, 0 0 24px ${color}`,
-              }}
-            />
-            <div style={{ width: 2, height: 24, background: `rgba(${rgb}, 0.3)` }} />
+            {/* Floor cubes */}
+            {sortedAgents.map((agent, i) => (
+              <FloorCube
+                key={agent.id}
+                agent={agent}
+                index={i}
+                total={sortedAgents.length}
+                color={color}
+                rgb={rgb}
+                isSelected={selectedIdx === i}
+                onClick={() => {
+                  if (dragDist.current < 8) setSelectedIdx(prev => prev === i ? null : i);
+                }}
+              />
+            ))}
+
+            {/* Base platform */}
+            <div style={{
+              position: 'absolute',
+              transformStyle: 'preserve-3d',
+              transform: `translateY(${CUBE_H / 2 + 10}px)`,
+            }}>
+              {/* Platform top face */}
+              <div style={{
+                ...faceBase,
+                width: CUBE_W + 40, height: CUBE_D + 40,
+                marginLeft: -(CUBE_W + 40) / 2, marginTop: -(CUBE_D + 40) / 2,
+                transform: `rotateX(90deg) translateZ(0px)`,
+                background: '#0a0a18',
+                border: `1px solid rgba(${rgb}, 0.2)`,
+                boxShadow: `0 0 30px rgba(${rgb}, 0.06)`,
+              }}>
+                <div style={{
+                  position: 'absolute', inset: 0, opacity: 0.1,
+                  backgroundImage: `repeating-linear-gradient(90deg, transparent 0, transparent 4px, rgba(${rgb}, 0.3) 4px, rgba(${rgb}, 0.3) 5px), repeating-linear-gradient(0deg, transparent 0, transparent 4px, rgba(${rgb}, 0.3) 4px, rgba(${rgb}, 0.3) 5px)`,
+                }} />
+                {/* Server info on platform */}
+                <div style={{
+                  position: 'absolute', bottom: 8, left: 0, right: 0,
+                  display: 'flex', justifyContent: 'center', gap: 16,
+                  fontSize: 8, color: '#444', letterSpacing: '0.08em',
+                }}>
+                  <span>{server.ip}</span>
+                  <span>PORT {server.port}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Beacon on top */}
+            <div style={{
+              position: 'absolute',
+              transformStyle: 'preserve-3d',
+              transform: `translateY(${-(towerTotalH + 20)}px)`,
+            }}>
+              <motion.div
+                animate={{ opacity: [0.3, 1, 0.3] }}
+                transition={{ duration: 1.5, repeat: Infinity }}
+                style={{
+                  ...faceBase,
+                  width: 10, height: 10, borderRadius: '50%',
+                  marginLeft: -5, marginTop: -5,
+                  backgroundColor: color, boxShadow: `0 0 15px ${color}, 0 0 30px ${color}`,
+                }}
+              />
+            </div>
           </motion.div>
-        </motion.div>
+        </div>
       </div>
 
       {/* ── Detail Panel ── */}
