@@ -226,7 +226,8 @@ const DetailPanel: React.FC<DetailPanelProps> = ({
       animate={{ x: 0 }}
       exit={{ x: '100%' }}
       transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-      className="w-96 bg-[#050508]/90 backdrop-blur-2xl border-l border-white/10 p-8 flex flex-col absolute right-0 top-0 bottom-0 z-30 shadow-2xl"
+      className="w-96 bg-[#050508]/90 backdrop-blur-2xl border-l border-white/10 p-8 flex flex-col shadow-2xl"
+      style={{ position: 'relative', zIndex: 30, height: '100%', flexShrink: 0 }}
     >
       {/* Close button */}
       <button
