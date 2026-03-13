@@ -1,27 +1,20 @@
 #!/bin/bash
 # Activity Reporter V2 — enriched agent + system metrics
-# Sends: tokens, model, role, emoji, sessions, CPU, RAM, disk, uptime
-# Rétro-compatible with V1 webhook endpoint
 # Usage: activity-reporter-v2.sh <SERVER_ID> <HUB_URL>
 
 SERVER_ID="${1:?Usage: $0 <SERVER_ID> <HUB_URL>}"
 HUB_URL="${2:-http://100.114.123.105:3101}"
-POLL_INTERVAL=15  # seconds between checks
+POLL_INTERVAL=15
 OPENCLAW_CMD="openclaw"
-VERSION=2
 
-# Detect if we need sudo
 if [ "$(whoami)" != "root" ] && command -v sudo &>/dev/null; then
   if ! $OPENCLAW_CMD status &>/dev/null 2>&1; then
     OPENCLAW_CMD="sudo openclaw"
   fi
 fi
 
-# ─── Role/Emoji maps per server (customize per deployment) ────────────────────
-# Format: ROLE_MAP[agent_id]="role"  EMOJI_MAP[agent_id]="emoji"
-declare -A ROLE_MAP
-declare -A EMOJI_MAP
-
+# Role/Emoji maps
+declare -A ROLE_MAP EMOJI_MAP
 case "$SERVER_ID" in
   NOVA)
     ROLE_MAP=([main]="Coordinatrice" [painter]="Artiste" [jarvis]="Assistant" [debug]="Sysadmin" [emma]="IA Compagne" [penny]="Finances" [brainstorm]="Créatif" [baboudog]="Compagnon" [memory]="Mémoire" [observer]="Observateur" [emotional]="Émotions")
@@ -50,6 +43,8 @@ case "$SERVER_ID" in
 esac
 
 LAST_HASH=""
+TMPDIR=$(mktemp -d)
+trap "rm -rf $TMPDIR" EXIT
 
 echo "[reporter-v2] Starting for $SERVER_ID → $HUB_URL (poll: ${POLL_INTERVAL}s)"
 
@@ -60,187 +55,153 @@ while true; do
     continue
   fi
 
-  # ─── Parse agents with enriched data ─────────────────────────────────────
-  AGENTS_JSON=$(echo "$STATUS_OUTPUT" | python3 -c "
-import sys, json, re
+  # Write inputs for Python
+  echo "$STATUS_OUTPUT" > "$TMPDIR/status.txt"
+  : > "$TMPDIR/roles.txt"
+  for k in "${!ROLE_MAP[@]}"; do echo "$k=${ROLE_MAP[$k]}" >> "$TMPDIR/roles.txt"; done
+  : > "$TMPDIR/emojis.txt"
+  for k in "${!EMOJI_MAP[@]}"; do echo "$k=${EMOJI_MAP[$k]}" >> "$TMPDIR/emojis.txt"; done
 
-lines = sys.stdin.read().split('\n')
+  # Python does everything: parse, enrich, system metrics, build payload, write files
+  python3 << PYEOF
+import json, re, subprocess, hashlib, os
+from datetime import datetime, timezone
+
+tmpdir = "$TMPDIR"
+server_id = "$SERVER_ID"
+
+with open(f"{tmpdir}/status.txt") as f:
+    lines = f.readlines()
+
+role_map, emoji_map = {}, {}
+try:
+    with open(f"{tmpdir}/roles.txt") as f:
+        for l in f:
+            l = l.strip()
+            if '=' in l:
+                k, v = l.split('=', 1)
+                role_map[k] = v
+except: pass
+try:
+    with open(f"{tmpdir}/emojis.txt") as f:
+        for l in f:
+            l = l.strip()
+            if '=' in l:
+                k, v = l.split('=', 1)
+                emoji_map[k] = v
+except: pass
+
 agents = {}
-
-# Parse sessions table
 for line in lines:
     if '│' not in line or 'agent:' not in line:
         continue
     parts = [p.strip() for p in line.split('│') if p.strip()]
     if len(parts) < 3:
         continue
-    
-    key = parts[0]  # e.g. agent:painter:main
-    age = parts[2] if len(parts) > 2 else ''
-    
-    # Extract agent ID
+    key, age = parts[0], parts[2]
     m = re.match(r'agent:([^:]+)', key)
     if not m:
         continue
-    agent_id = m.group(1)
-    
-    # Determine status
+    aid = m.group(1)
     status = 'IDLE'
-    if age in ('just now',) or re.match(r'^\d+s ago$', age):
-        if age == 'just now':
+    if age == 'just now':
+        status = 'ACTIVE'
+    elif re.match(r'^\d+s ago$', age):
+        if int(re.match(r'(\d+)', age).group(1)) < 300:
             status = 'ACTIVE'
-        else:
-            secs = int(re.match(r'(\d+)s', age).group(1))
-            if secs < 300:
-                status = 'ACTIVE'
     elif re.match(r'^\d+m ago$', age):
-        mins = int(re.match(r'(\d+)m', age).group(1))
-        if mins < 5:
+        if int(re.match(r'(\d+)', age).group(1)) < 5:
             status = 'ACTIVE'
-    
-    if agent_id not in agents:
-        agents[agent_id] = {
-            'id': agent_id,
-            'status': status,
-            'lastAge': age,
-            'sessionCount': 1,
-            'activeSessions': 1 if status == 'ACTIVE' else 0
-        }
+    if aid not in agents:
+        agents[aid] = {'id': aid, 'status': status, 'lastAge': age, 'sessionCount': 1, 'activeSessions': 1 if status == 'ACTIVE' else 0}
     else:
-        agents[agent_id]['sessionCount'] += 1
+        agents[aid]['sessionCount'] += 1
         if status == 'ACTIVE':
-            agents[agent_id]['status'] = 'ACTIVE'
-            agents[agent_id]['activeSessions'] += 1
+            agents[aid]['status'] = 'ACTIVE'
+            agents[aid]['activeSessions'] += 1
 
-# Parse model info from status output
-# Look for lines with model info (varies by openclaw version)
-for line in lines:
-    # Look for agent config sections or model mentions
-    m = re.match(r'.*agent[=:](\w+).*model[=:]([^\s,|]+)', line, re.I)
-    if m:
-        aid, model = m.group(1), m.group(2)
-        if aid in agents:
-            agents[aid]['model'] = model
-            # Friendly name
-            if 'opus' in model.lower():
-                agents[aid]['modelFriendly'] = 'Claude Opus'
-            elif 'sonnet' in model.lower():
-                agents[aid]['modelFriendly'] = 'Claude Sonnet'
-            else:
-                agents[aid]['modelFriendly'] = model
+for aid, a in agents.items():
+    if aid in role_map: a['role'] = role_map[aid]
+    if aid in emoji_map: a['emoji'] = emoji_map[aid]
 
-# Parse token usage if available
-for line in lines:
-    m = re.match(r'.*tokens?.*?(\d[\d,]+)\s*/\s*(\d[\d,]+)', line, re.I)
-    if m:
-        used = int(m.group(1).replace(',', ''))
-        total = int(m.group(2).replace(',', ''))
-        # Try to associate with an agent (best effort)
-        pass  # Token parsing is format-dependent
+agent_list = list(agents.values())
 
-print(json.dumps(list(agents.values())))
-" 2>/dev/null)
+# System metrics
+system = {}
+try:
+    top = subprocess.run(['top', '-bn1'], capture_output=True, text=True, timeout=5).stdout
+    for l in top.split('\n'):
+        if 'Cpu' in l:
+            m = re.search(r'(\d+[.,]\d+)\s*id', l)
+            if m:
+                system['cpu'] = round(100.0 - float(m.group(1).replace(',', '.')), 1)
+            break
+    mem = subprocess.run(['free', '-m'], capture_output=True, text=True, timeout=5).stdout
+    for l in mem.split('\n'):
+        if l.startswith('Mem:'):
+            p = l.split()
+            system['memTotalMB'] = int(p[1])
+            system['memUsedMB'] = int(p[2])
+            system['memPct'] = round(int(p[2]) / int(p[1]) * 100, 1) if int(p[1]) > 0 else 0
+            break
+    df = subprocess.run(['df', '-BG', '/'], capture_output=True, text=True, timeout=5).stdout
+    for l in df.split('\n')[1:]:
+        p = l.split()
+        if len(p) >= 5:
+            system['diskTotalGB'] = float(p[1].rstrip('G'))
+            system['diskUsedGB'] = float(p[2].rstrip('G'))
+            system['diskPct'] = float(p[4].rstrip('%'))
+            break
+    up = subprocess.run(['uptime', '-p'], capture_output=True, text=True, timeout=5).stdout.strip()
+    system['uptimeHuman'] = up.replace('up ', '')
+    with open('/proc/loadavg') as f:
+        p = f.read().split()
+        system['load1'] = float(p[0])
+        system['load5'] = float(p[1])
+        system['load15'] = float(p[2])
+except: pass
 
-  if [ -z "$AGENTS_JSON" ] || [ "$AGENTS_JSON" = "[]" ]; then
-    AGENTS_JSON="[]"
-  fi
-
-  # ─── Enrich with role/emoji from maps ────────────────────────────────────
-  ENRICHED=$(echo "$AGENTS_JSON" | python3 -c "
-import json, sys, os
-
-agents = json.load(sys.stdin)
-role_map = dict(item.split('=',1) for item in '''$(for k in "${!ROLE_MAP[@]}"; do echo "$k=${ROLE_MAP[$k]}"; done)'''.strip().split('\n') if '=' in item) if '''$(for k in "${!ROLE_MAP[@]}"; do echo "$k=${ROLE_MAP[$k]}"; done)'''.strip() else {}
-emoji_map = dict(item.split('=',1) for item in '''$(for k in "${!EMOJI_MAP[@]}"; do echo "$k=${EMOJI_MAP[$k]}"; done)'''.strip().split('\n') if '=' in item) if '''$(for k in "${!EMOJI_MAP[@]}"; do echo "$k=${EMOJI_MAP[$k]}"; done)'''.strip() else {}
-
-for a in agents:
-    aid = a['id']
-    if aid in role_map:
-        a['role'] = role_map[aid]
-    if aid in emoji_map:
-        a['emoji'] = emoji_map[aid]
-
-print(json.dumps(agents))
-" 2>/dev/null)
-
-  if [ -z "$ENRICHED" ]; then
-    ENRICHED="$AGENTS_JSON"
-  fi
-
-  # ─── System metrics ──────────────────────────────────────────────────────
-  CPU=$(top -bn1 2>/dev/null | awk '/^%?Cpu/{gsub(/[^0-9.]/, "", $2); print $2; exit}' || echo "0")
-  MEM_INFO=$(free -m 2>/dev/null | awk '/^Mem:/{print $2, $3}')
-  MEM_TOTAL=$(echo "$MEM_INFO" | awk '{print $1}')
-  MEM_USED=$(echo "$MEM_INFO" | awk '{print $2}')
-  MEM_PCT=$(echo "$MEM_TOTAL $MEM_USED" | awk '{if($1>0) printf "%.1f", $2/$1*100; else print "0"}')
-  DISK_INFO=$(df -BG / 2>/dev/null | awk 'NR==2{gsub(/G/,"",$2); gsub(/G/,"",$3); gsub(/%/,"",$5); print $2, $3, $5}')
-  DISK_TOTAL=$(echo "$DISK_INFO" | awk '{print $1}')
-  DISK_USED=$(echo "$DISK_INFO" | awk '{print $2}')
-  DISK_PCT=$(echo "$DISK_INFO" | awk '{print $3}')
-  UPTIME_HUMAN=$(uptime -p 2>/dev/null | sed 's/^up //' || echo "unknown")
-  LOAD=$(cat /proc/loadavg 2>/dev/null | awk '{print $1, $2, $3}')
-  LOAD1=$(echo "$LOAD" | awk '{print $1}')
-  LOAD5=$(echo "$LOAD" | awk '{print $2}')
-  LOAD15=$(echo "$LOAD" | awk '{print $3}')
-
-  # ─── Build payload ───────────────────────────────────────────────────────
-  AGENT_COUNT=$(echo "$ENRICHED" | python3 -c "import json,sys; print(len(json.load(sys.stdin)))" 2>/dev/null || echo "0")
-  ACTIVE_COUNT=$(echo "$ENRICHED" | python3 -c "import json,sys; print(len([a for a in json.load(sys.stdin) if a.get('status')=='ACTIVE']))" 2>/dev/null || echo "0")
-
-  SYSTEM_JSON=$(python3 -c "
-import json
-print(json.dumps({
-    'cpu': float('${CPU:-0}'),
-    'memUsedMB': int('${MEM_USED:-0}'),
-    'memTotalMB': int('${MEM_TOTAL:-0}'),
-    'memPct': float('${MEM_PCT:-0}'),
-    'diskUsedGB': float('${DISK_USED:-0}'),
-    'diskTotalGB': float('${DISK_TOTAL:-0}'),
-    'diskPct': float('${DISK_PCT:-0}'),
-    'uptimeHuman': '${UPTIME_HUMAN}',
-    'load1': float('${LOAD1:-0}'),
-    'load5': float('${LOAD5:-0}'),
-    'load15': float('${LOAD15:-0}')
-}))
-" 2>/dev/null)
-
-  PAYLOAD=$(python3 -c "
-import json
-agents = json.loads('''$ENRICHED''')
-system = json.loads('''${SYSTEM_JSON:-{}}''')
-print(json.dumps({
-    'serverId': '$SERVER_ID',
-    'agents': agents,
-    'agentCount': int('${AGENT_COUNT:-0}'),
-    'activeCount': int('${ACTIVE_COUNT:-0}'),
+active_count = len([a for a in agent_list if a['status'] == 'ACTIVE'])
+payload = {
+    'serverId': server_id,
+    'agents': agent_list,
+    'agentCount': len(agent_list),
+    'activeCount': active_count,
     'system': system,
-    'reporterVersion': $VERSION,
-    'timestamp': '$(date -u +%Y-%m-%dT%H:%M:%SZ)'
-}))
-" 2>/dev/null)
+    'reporterVersion': 2,
+    'timestamp': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+}
 
-  if [ -z "$PAYLOAD" ]; then
+payload_json = json.dumps(payload)
+h = hashlib.md5(payload_json.encode()).hexdigest()
+
+with open(f"{tmpdir}/payload.json", 'w') as f:
+    f.write(payload_json)
+with open(f"{tmpdir}/hash.txt", 'w') as f:
+    f.write(h)
+PYEOF
+
+  if [ ! -f "$TMPDIR/payload.json" ] || [ ! -f "$TMPDIR/hash.txt" ]; then
     sleep $POLL_INTERVAL
     continue
   fi
 
-  # ─── Hash and send ───────────────────────────────────────────────────────
-  CURRENT_HASH=$(echo "$PAYLOAD" | md5sum | cut -d' ' -f1)
+  CURRENT_HASH=$(cat "$TMPDIR/hash.txt")
 
   if [ "$CURRENT_HASH" != "$LAST_HASH" ]; then
     HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
       -X POST "$HUB_URL/api/webhook/activity" \
       -H "Content-Type: application/json" \
-      -d "$PAYLOAD" \
+      -d @"$TMPDIR/payload.json" \
       --connect-timeout 5 \
       --max-time 10 2>/dev/null)
 
     if [ "$HTTP_CODE" = "200" ]; then
-      echo "[reporter-v2] Pushed: ${ACTIVE_COUNT}/${AGENT_COUNT} active, CPU=${CPU}%, MEM=${MEM_PCT}%"
+      INFO=$(python3 -c "import json; d=json.load(open('$TMPDIR/payload.json')); s=d.get('system',{}); print(f\"{d['activeCount']}/{d['agentCount']} active, CPU={s.get('cpu','?')}% MEM={s.get('memPct','?')}%\")" 2>/dev/null)
+      echo "[reporter-v2] Pushed: $INFO"
     else
       echo "[reporter-v2] Push failed (HTTP $HTTP_CODE)"
     fi
-
     LAST_HASH="$CURRENT_HASH"
   fi
 
