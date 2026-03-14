@@ -1,23 +1,13 @@
 /**
- * InteriorView V8 — Three.js / react-three-fiber tower view
- * Based on David's V8 prototype (neural-grid-internal/src/App.tsx)
- * Adapted: real server/agent data, server.color, framer-motion
+ * InteriorView — CSS 3D Tower (based on David's Css3dApp.tsx)
+ * Pure CSS 3D transforms with preserve-3d, no Three.js canvas.
+ * Real HTML on each face for crisp text + progress bars.
  */
 
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Server as ServerIcon, Cpu, Network, Database, X } from 'lucide-react';
-import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls, Edges, Html, Text } from '@react-three/drei';
-import * as THREE from 'three';
+import { Server, Network, X } from 'lucide-react';
 import { ServerLayoutItem, Agent } from '../types';
-
-// ─── Dimensions (same as David's V8) ─────────────────────────────────────────
-const W = 4.5;
-const H = 0.9;
-const D = 3.5;
-const GAP = 0.5;
-const SPACING = H + GAP;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function formatTime(iso?: string): string {
@@ -29,12 +19,12 @@ function formatTime(iso?: string): string {
 }
 
 function formatTokens(used?: number, max?: number): string {
-  if (!used) return '—';
-  const fmt = (n: number) => n >= 1000 ? `${Math.round(n / 1000)}K` : String(n);
-  return max ? `${fmt(used)} / ${fmt(max)}` : fmt(used);
+  if (!used && !max) return '—';
+  const fmt = (n: number) => n >= 1000 ? `${Math.round(n / 1000)}k` : String(n);
+  return max ? `${fmt(used || 0)} / ${fmt(max)}` : fmt(used || 0);
 }
 
-// ─── 3D Server Node ──────────────────────────────────────────────────────────
+// ─── CSS 3D Server Node ──────────────────────────────────────────────────────
 interface ServerNodeProps {
   agent: Agent;
   index: number;
@@ -44,157 +34,234 @@ interface ServerNodeProps {
   onClick: () => void;
 }
 
-const ServerNode: React.FC<ServerNodeProps> = ({ agent, index, total, hexColor, isSelected, onClick }) => {
-  const groupRef = useRef<THREE.Group>(null!);
-  const isActive = agent.status === 'ACTIVE' || agent.status === 'THINKING';
+const NODE_W = 400;  // px
+const NODE_H = 80;   // px
+const NODE_D = 300;  // px (depth)
+const NODE_SPACING = 120; // px between floors
 
-  const baseY = (total - 1 - index) * SPACING + H / 2 + 0.5;
-  const progress = (agent.tokensPct ?? 0) / 100;
+const ServerNode: React.FC<ServerNodeProps> = ({ agent, index, total, hexColor, isSelected, onClick }) => {
+  const isActive = agent.status === 'ACTIVE' || agent.status === 'THINKING';
+  const progress = agent.tokensPct ?? 0;
 
   const statusColor = isActive ? '#22c55e'
     : agent.status === 'IDLE' ? '#eab308'
     : '#4b5563';
+  const statusGlow = isActive ? `0 0 8px #22c55e`
+    : agent.status === 'IDLE' ? '' 
+    : '';
 
-  useFrame(() => {
-    if (!groupRef.current) return;
-    const targetZ = isSelected ? 0.8 : 0;
-    groupRef.current.position.z = THREE.MathUtils.lerp(groupRef.current.position.z, targetZ, 0.1);
-    if (isActive) {
-      groupRef.current.position.x = (Math.random() - 0.5) * 0.02;
-    } else {
-      groupRef.current.position.x = THREE.MathUtils.lerp(groupRef.current.position.x, 0, 0.1);
-    }
-  });
+  const yPos = (total - 1 - index) * NODE_SPACING;
+  const zPos = isSelected ? 80 : 0;
 
   return (
-    <group
-      ref={groupRef}
-      position={[0, baseY, 0]}
+    <div
+      className="absolute cursor-pointer transition-transform duration-500 ease-out"
+      style={{
+        left: '50%',
+        top: '50%',
+        width: NODE_W,
+        height: NODE_H,
+        marginLeft: -NODE_W / 2,
+        marginTop: -NODE_H / 2,
+        transformStyle: 'preserve-3d',
+        transform: `translateY(${yPos - (total * NODE_SPACING) / 2 + 60}px) translateZ(${zPos}px)`,
+      }}
       onClick={(e) => { e.stopPropagation(); onClick(); }}
     >
-      {/* Main Server Chassis */}
-      <mesh castShadow receiveShadow>
-        <boxGeometry args={[W, H, D]} />
-        <meshStandardMaterial
-          color="#05050a"
-          metalness={0.6}
-          roughness={0.4}
-          emissive={hexColor}
-          emissiveIntensity={isSelected ? 0.15 : 0.02}
+      {/* Front Face */}
+      <div
+        className="absolute border-2 bg-[#05050a]/90 backdrop-blur-md flex flex-col justify-between p-4 transition-all duration-500"
+        style={{
+          left: '50%',
+          top: '50%',
+          width: NODE_W,
+          height: NODE_H,
+          marginLeft: -NODE_W / 2,
+          marginTop: -NODE_H / 2,
+          borderColor: isSelected ? hexColor : `${hexColor}40`,
+          transform: `translateZ(${NODE_D / 2}px)`,
+          boxShadow: isSelected ? `0 0 30px ${hexColor}60, 0 0 15px ${hexColor}40 inset` : 'none',
+        }}
+      >
+        <div style={{ color: hexColor }} className="font-mono text-xl tracking-[0.2em] font-medium">
+          {agent.name}
+        </div>
+        <div className="flex justify-between items-end">
+          <div className="flex gap-2.5">
+            <div
+              className={isActive ? 'animate-pulse' : ''}
+              style={{
+                width: 8, height: 8, borderRadius: '50%',
+                backgroundColor: statusColor,
+                boxShadow: statusGlow,
+              }}
+            />
+            <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: hexColor, opacity: 0.4 }} />
+            <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: hexColor, opacity: 0.15 }} />
+          </div>
+          <div className="w-48 h-1.5 bg-white/10 rounded-full overflow-hidden">
+            <div
+              className="h-full transition-all duration-500 relative"
+              style={{
+                width: `${progress}%`,
+                backgroundColor: hexColor,
+                boxShadow: `0 0 10px ${hexColor}`,
+              }}
+            >
+              <div
+                className="absolute inset-0 bg-white/30"
+                style={{
+                  backgroundImage: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent)',
+                  backgroundSize: '200% 100%',
+                  animation: 'shimmer 2s infinite linear',
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Back Face */}
+      <div
+        className="absolute border bg-[#020205]/90 transition-all duration-500"
+        style={{
+          left: '50%', top: '50%',
+          width: NODE_W, height: NODE_H,
+          marginLeft: -NODE_W / 2, marginTop: -NODE_H / 2,
+          transform: `translateZ(${-NODE_D / 2}px) rotateY(180deg)`,
+          borderColor: isSelected ? hexColor : 'rgba(255,255,255,0.1)',
+          boxShadow: isSelected ? `0 0 20px ${hexColor}20 inset` : 'none',
+        }}
+      />
+
+      {/* Top Face */}
+      <div
+        className="absolute border bg-[#020205]/80 flex items-center justify-center overflow-hidden transition-all duration-500"
+        style={{
+          left: '50%', top: '50%',
+          width: NODE_W, height: NODE_D,
+          marginLeft: -NODE_W / 2, marginTop: -NODE_D / 2,
+          transform: `translateY(${-NODE_H / 2}px) rotateX(90deg)`,
+          borderColor: isSelected ? hexColor : 'rgba(255,255,255,0.1)',
+          boxShadow: isSelected ? `0 0 40px ${hexColor}20 inset` : 'none',
+        }}
+      >
+        <div
+          className="absolute inset-0 opacity-10"
+          style={{
+            backgroundImage: 'radial-gradient(circle, #fff 1px, transparent 1px)',
+            backgroundSize: '20px 20px',
+          }}
         />
-        <Edges scale={1.001} threshold={15} color={hexColor} opacity={isSelected ? 1 : 0.5} transparent />
-      </mesh>
+        <span
+          className="font-mono text-6xl font-bold tracking-widest transform -rotate-45 transition-colors duration-500"
+          style={{ color: isSelected ? hexColor : 'rgba(255,255,255,0.2)' }}
+        >
+          {agent.id.toUpperCase()}
+        </span>
+      </div>
 
-      {/* Front face — agent name (3D Text, always visible) */}
-      <Text
-        position={[0, 0.15, D / 2 + 0.02]}
-        fontSize={0.22}
-        color={hexColor}
-        anchorX="center"
-        anchorY="middle"
-        
-        letterSpacing={0.15}
-        maxWidth={W - 0.4}
-      >
-        {agent.name.toUpperCase()}
-      </Text>
+      {/* Bottom Face */}
+      <div
+        className="absolute border bg-[#020205]/90 transition-all duration-500"
+        style={{
+          left: '50%', top: '50%',
+          width: NODE_W, height: NODE_D,
+          marginLeft: -NODE_W / 2, marginTop: -NODE_D / 2,
+          transform: `translateY(${NODE_H / 2}px) rotateX(-90deg)`,
+          borderColor: isSelected ? hexColor : 'rgba(255,255,255,0.1)',
+          boxShadow: isSelected ? `0 0 40px ${hexColor}20 inset` : 'none',
+        }}
+      />
 
-      {/* Front face — status dot */}
-      <mesh position={[-W / 2 + 0.3, -0.2, D / 2 + 0.02]}>
-        <circleGeometry args={[0.06, 16]} />
-        <meshBasicMaterial color={statusColor} />
-      </mesh>
-      {/* Status glow ring for active */}
-      {isActive && (
-        <mesh position={[-W / 2 + 0.3, -0.2, D / 2 + 0.015]}>
-          <ringGeometry args={[0.06, 0.1, 16]} />
-          <meshBasicMaterial color={statusColor} transparent opacity={0.4} />
-        </mesh>
-      )}
-      {/* Secondary dots */}
-      <mesh position={[-W / 2 + 0.55, -0.2, D / 2 + 0.02]}>
-        <circleGeometry args={[0.05, 16]} />
-        <meshBasicMaterial color={hexColor} transparent opacity={0.4} />
-      </mesh>
-      <mesh position={[-W / 2 + 0.75, -0.2, D / 2 + 0.02]}>
-        <circleGeometry args={[0.05, 16]} />
-        <meshBasicMaterial color={hexColor} transparent opacity={0.15} />
-      </mesh>
+      {/* Left Face */}
+      <div
+        className="absolute border bg-[#030308]/90 transition-all duration-500"
+        style={{
+          left: '50%', top: '50%',
+          width: NODE_D, height: NODE_H,
+          marginLeft: -NODE_D / 2, marginTop: -NODE_H / 2,
+          transform: `translateX(${-NODE_W / 2}px) rotateY(-90deg)`,
+          borderColor: isSelected ? hexColor : 'rgba(255,255,255,0.1)',
+          boxShadow: isSelected ? `0 0 20px ${hexColor}20 inset` : 'none',
+        }}
+      />
 
-      {/* Front face — progress bar background */}
-      <mesh position={[W / 2 - 1.2, -0.2, D / 2 + 0.015]}>
-        <planeGeometry args={[2, 0.06]} />
-        <meshBasicMaterial color="#ffffff" transparent opacity={0.1} />
-      </mesh>
-      {/* Progress bar fill */}
-      {progress > 0 && (
-        <mesh position={[W / 2 - 1.2 - (1 - progress), -0.2, D / 2 + 0.02]}>
-          <planeGeometry args={[2 * progress, 0.06]} />
-          <meshBasicMaterial color={hexColor} />
-        </mesh>
-      )}
-
-      {/* Selection glow — edge highlight when selected */}
-      {isSelected && (
-        <mesh>
-          <boxGeometry args={[W + 0.08, H + 0.08, D + 0.08]} />
-          <meshBasicMaterial color={hexColor} transparent opacity={0.08} />
-        </mesh>
-      )}
-
-      {/* Top face — agent ID text */}
-      <Text
-        position={[0, H / 2 + 0.01, 0]}
-        rotation={[-Math.PI / 2, 0, Math.PI / 4]}
-        fontSize={0.5}
-        color={isSelected ? hexColor : '#ffffff'}
-        anchorX="center"
-        anchorY="middle"
-        
-        letterSpacing={0.2}
-        fillOpacity={isSelected ? 0.3 : 0.08}
-      >
-        {agent.id.toUpperCase()}
-      </Text>
-    </group>
+      {/* Right Face */}
+      <div
+        className="absolute border bg-[#030308]/90 transition-all duration-500"
+        style={{
+          left: '50%', top: '50%',
+          width: NODE_D, height: NODE_H,
+          marginLeft: -NODE_D / 2, marginTop: -NODE_H / 2,
+          transform: `translateX(${NODE_W / 2}px) rotateY(90deg)`,
+          borderColor: isSelected ? hexColor : 'rgba(255,255,255,0.1)',
+          boxShadow: isSelected ? `0 0 20px ${hexColor}20 inset` : 'none',
+        }}
+      />
+    </div>
   );
 };
 
-// ─── Wireframe Rack Structure ─────────────────────────────────────────────────
-interface RackTowerProps {
-  count: number;
-  hexColor: string;
-}
-
-const RackTower: React.FC<RackTowerProps> = ({ count, hexColor }) => {
-  const rackHeight = count * SPACING + 0.5;
-  const rackY = rackHeight / 2 + 0.25;
+// ─── Wireframe Rack ──────────────────────────────────────────────────────────
+const RackTower: React.FC<{ count: number; hexColor: string }> = ({ count, hexColor }) => {
+  const rackW = NODE_W + 40;
+  const rackD = NODE_D + 40;
+  const rackH = count * NODE_SPACING + 40;
 
   return (
-    <group>
-      {/* Outer Wireframe Bounding Box */}
-      <mesh position={[0, rackY, 0]}>
-        <boxGeometry args={[W + 0.4, rackHeight, D + 0.4]} />
-        <meshBasicMaterial visible={false} />
-        <Edges color={hexColor} opacity={0.3} transparent />
-      </mesh>
+    <div
+      className="absolute pointer-events-none"
+      style={{
+        left: '50%', top: '50%',
+        width: rackW, height: rackH,
+        marginLeft: -rackW / 2, marginTop: -rackH / 2,
+        transformStyle: 'preserve-3d',
+      }}
+    >
+      {/* Front Frame */}
+      <div className="absolute inset-0 border-2" style={{ borderColor: `${hexColor}33`, transform: `translateZ(${rackD / 2}px)` }} />
+      {/* Back Frame */}
+      <div className="absolute inset-0 border-2" style={{ borderColor: `${hexColor}33`, transform: `translateZ(${-rackD / 2}px)` }} />
+      {/* Left Frame */}
+      <div className="absolute top-0 border-2" style={{
+        left: '50%', width: rackD, height: rackH,
+        marginLeft: -rackD / 2,
+        borderColor: `${hexColor}33`,
+        transform: `translateX(${-rackW / 2}px) rotateY(90deg)`,
+      }} />
+      {/* Right Frame */}
+      <div className="absolute top-0 border-2" style={{
+        left: '50%', width: rackD, height: rackH,
+        marginLeft: -rackD / 2,
+        borderColor: `${hexColor}33`,
+        transform: `translateX(${rackW / 2}px) rotateY(90deg)`,
+      }} />
 
-      {/* Inner Shelves */}
+      {/* Shelves */}
       {Array.from({ length: count }).map((_, i) => {
-        const y = (count - 1 - i) * SPACING + 0.5 - GAP / 2;
+        const serverY = (count - 1 - i) * NODE_SPACING - (count * NODE_SPACING) / 2 + 60;
+        const shelfY = serverY + 45;
         return (
-          <mesh key={i} position={[0, y, 0]}>
-            <boxGeometry args={[W + 0.3, 0.05, D + 0.3]} />
-            <meshStandardMaterial color="#0f172a" />
-            <Edges color={hexColor} opacity={0.2} transparent />
-          </mesh>
+          <div
+            key={i}
+            className="absolute border backdrop-blur-sm"
+            style={{
+              left: '50%', top: '50%',
+              width: rackW - 4, height: rackD - 4,
+              marginLeft: -(rackW - 4) / 2, marginTop: -(rackD - 4) / 2,
+              borderColor: `${hexColor}4d`,
+              backgroundColor: 'rgba(15, 23, 42, 0.4)',
+              transform: `translateY(${shelfY}px) rotateX(90deg)`,
+            }}
+          />
         );
       })}
-    </group>
+    </div>
   );
 };
 
-// ─── Detail Panel (matches David's Css3dApp design exactly) ──────────────────
+// ─── Detail Panel (from Css3dApp) ─────────────────────────────────────────────
 interface DetailPanelProps {
   agent: Agent | null;
   floorIndex: number;
@@ -221,7 +288,6 @@ const DetailPanel: React.FC<DetailPanelProps> = ({
       className="w-96 bg-[#050508]/90 backdrop-blur-2xl border-l border-white/10 p-8 flex flex-col shadow-2xl"
       style={{ position: 'relative', zIndex: 30, height: '100%', flexShrink: 0 }}
     >
-      {/* Close button */}
       <button
         onClick={onClose}
         className="absolute top-6 right-6 text-white/40 hover:text-white transition-colors cursor-pointer"
@@ -236,14 +302,10 @@ const DetailPanel: React.FC<DetailPanelProps> = ({
         </div>
       ) : (
         <>
-          {/* Agent Header — emoji box + name + role */}
           <div className="flex items-center gap-4 mb-6 mt-2">
             <div
               className="w-14 h-14 rounded-xl border flex items-center justify-center text-3xl"
-              style={{
-                borderColor: `${hexColor}4d`,
-                backgroundColor: `${hexColor}1a`,
-              }}
+              style={{ borderColor: `${hexColor}4d`, backgroundColor: `${hexColor}1a` }}
             >
               {agent.emoji}
             </div>
@@ -256,7 +318,6 @@ const DetailPanel: React.FC<DetailPanelProps> = ({
           </div>
 
           <div className="space-y-4 flex-1 flex flex-col overflow-y-auto pr-2 pb-4" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.1) transparent' }}>
-            {/* Status Row */}
             <div className="flex items-center justify-between bg-white/5 p-4 rounded-lg border border-white/5">
               <span className="text-white/40 text-[10px] font-mono tracking-wider">STATUT</span>
               <div className="flex items-center gap-2 text-sm font-mono">
@@ -265,7 +326,6 @@ const DetailPanel: React.FC<DetailPanelProps> = ({
               </div>
             </div>
 
-            {/* Grid Stats — 2x3 */}
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-white/5 rounded-lg p-3 border border-white/5">
                 <div className="text-white/40 text-[10px] mb-1 font-mono tracking-wider">MODÈLE</div>
@@ -293,13 +353,11 @@ const DetailPanel: React.FC<DetailPanelProps> = ({
               </div>
             </div>
 
-            {/* Session Active */}
             <div className="bg-white/5 rounded-lg p-3 border border-white/5">
               <div className="text-white/40 text-[10px] mb-1 font-mono tracking-wider">SESSION ACTIVE</div>
               <div className="text-sm">{isActive ? `Agent ${agent.id}` : 'Aucune'}</div>
             </div>
 
-            {/* Tâche en cours */}
             <div className="bg-white/5 rounded-lg p-3 border border-white/5">
               <div className="text-white/40 text-[10px] mb-1 font-mono tracking-wider">TÂCHE EN COURS</div>
               <div className="text-sm text-white/80 leading-relaxed">
@@ -307,7 +365,6 @@ const DetailPanel: React.FC<DetailPanelProps> = ({
               </div>
             </div>
 
-            {/* Connexions Mesh */}
             <div className="bg-white/5 rounded-lg p-3 border border-white/5">
               <div className="text-white/40 text-[10px] mb-2 font-mono tracking-wider flex items-center gap-2">
                 <Network className="w-3 h-3" /> CONNEXIONS MESH
@@ -339,9 +396,11 @@ interface InteriorViewProps {
 
 export default function InteriorView({ server, onClose }: InteriorViewProps) {
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const [rotation, setRotation] = useState({ x: -15, y: -30 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [lastPos, setLastPos] = useState({ x: 0, y: 0 });
 
-  // Escape key to close
-  React.useEffect(() => {
+  useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
@@ -351,10 +410,43 @@ export default function InteriorView({ server, onClose }: InteriorViewProps) {
 
   const hexColor = server.color;
   const agents = server.agents;
-  const towerHeight = agents.length * SPACING;
-
   const selectedAgent = agents.find((a) => a.id === selectedAgentId) ?? null;
   const selectedFloorIndex = selectedAgent ? agents.indexOf(selectedAgent) : 0;
+
+  // ── Mouse drag to rotate ──
+  const handleMouseDown = (e: React.MouseEvent) => {
+    setIsDragging(true);
+    setLastPos({ x: e.clientX, y: e.clientY });
+  };
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging) return;
+    const dx = e.clientX - lastPos.x;
+    const dy = e.clientY - lastPos.y;
+    setRotation(prev => ({
+      x: Math.max(-80, Math.min(80, prev.x - dy * 0.5)),
+      y: prev.y + dx * 0.5,
+    }));
+    setLastPos({ x: e.clientX, y: e.clientY });
+  };
+  const handleMouseUp = () => setIsDragging(false);
+
+  // ── Touch handlers ──
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length !== 1) return;
+    setIsDragging(true);
+    setLastPos({ x: e.touches[0].clientX, y: e.touches[0].clientY });
+  };
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!isDragging || e.touches.length !== 1) return;
+    const dx = e.touches[0].clientX - lastPos.x;
+    const dy = e.touches[0].clientY - lastPos.y;
+    setRotation(prev => ({
+      x: Math.max(-80, Math.min(80, prev.x - dy * 0.5)),
+      y: prev.y + dx * 0.5,
+    }));
+    setLastPos({ x: e.touches[0].clientX, y: e.touches[0].clientY });
+  };
+  const handleTouchEnd = () => setIsDragging(false);
 
   return (
     <motion.div
@@ -362,49 +454,43 @@ export default function InteriorView({ server, onClose }: InteriorViewProps) {
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.25 }}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 100,
-        background: '#030305',
-        display: 'flex', overflow: 'hidden',
-        fontFamily: 'sans-serif', color: '#fff',
-      }}
+      className="w-screen h-screen bg-[#030305] text-white flex overflow-hidden font-sans"
+      style={{ position: 'fixed', inset: 0, zIndex: 100, perspective: '1200px' }}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
     >
-      {/* ── 3D Canvas (fullscreen) ── */}
-      <div style={{ flex: 1, position: 'relative', cursor: 'crosshair' }}>
-        <Canvas
-          shadows={{ type: THREE.PCFShadowMap }}
-          camera={{ position: [10, towerHeight / 2 + 2, 12], fov: 45 }}
+      {/* ── CSS 3D Scene ── */}
+      <div className="flex-1 relative cursor-move w-full h-full flex items-center justify-center"
+        style={{ transformStyle: 'preserve-3d' }}
+      >
+        <div
+          className="transition-transform duration-100 ease-linear"
+          style={{
+            transform: `rotateX(${rotation.x}deg) rotateY(${rotation.y}deg)`,
+            transformStyle: 'preserve-3d',
+          }}
         >
-          <color attach="background" args={['#030305']} />
-          <fog attach="fog" args={['#030305', 15, 40]} />
-
-          <ambientLight intensity={0.3} />
-          <pointLight position={[0, towerHeight + 2, 5]} intensity={1.5} color="#ffffff" />
-          <spotLight
-            position={[8, towerHeight, 8]}
-            angle={0.4}
-            penumbra={1}
-            intensity={2}
-            color={hexColor}
-            castShadow
-          />
-          <spotLight
-            position={[-8, towerHeight, 8]}
-            angle={0.4}
-            penumbra={1}
-            intensity={1.5}
-            color={hexColor}
-            castShadow
+          {/* Floor Grid */}
+          <div
+            className="absolute border"
+            style={{
+              left: '50%', top: '50%',
+              width: 1000, height: 1000,
+              marginLeft: -500, marginTop: -500,
+              transform: `translateY(${agents.length * 60 + 40}px) rotateX(90deg)`,
+              backgroundImage: `linear-gradient(${hexColor}33 1px, transparent 1px), linear-gradient(90deg, ${hexColor}33 1px, transparent 1px)`,
+              backgroundSize: '50px 50px',
+              backgroundColor: '#020617',
+              borderColor: `${hexColor}20`,
+            }}
           />
 
-          {/* Floor */}
-          <gridHelper args={[100, 100, '#1e293b', '#020617']} position={[0, 0, 0]} />
-          <mesh position={[0, -0.1, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-            <planeGeometry args={[100, 100]} />
-            <meshStandardMaterial color="#020617" roughness={0.8} />
-          </mesh>
-
-          {/* Rack Tower */}
+          {/* Rack Tower wireframe */}
           <RackTower count={agents.length} hexColor={hexColor} />
 
           {/* Server Nodes */}
@@ -416,59 +502,23 @@ export default function InteriorView({ server, onClose }: InteriorViewProps) {
               total={agents.length}
               hexColor={hexColor}
               isSelected={selectedAgentId === agent.id}
-              onClick={() => setSelectedAgentId((prev) => prev === agent.id ? null : agent.id)}
+              onClick={() => setSelectedAgentId(prev => prev === agent.id ? null : agent.id)}
             />
           ))}
-
-          <OrbitControls
-            makeDefault
-            target={[0, towerHeight / 2, 0]}
-            minPolarAngle={0}
-            maxPolarAngle={Math.PI / 2 - 0.05}
-            minDistance={5}
-            maxDistance={30}
-            enableDamping
-            dampingFactor={0.05}
-          />
-        </Canvas>
-
-        {/* Header Overlay */}
-        <div style={{
-          position: 'absolute', top: 32, left: 32, zIndex: 20, pointerEvents: 'none',
-        }}>
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 12,
-            background: 'rgba(0,0,0,0.5)',
-            border: '1px solid rgba(255,255,255,0.08)',
-            borderRadius: 8, padding: '10px 16px',
-            backdropFilter: 'blur(12px)',
-            pointerEvents: 'auto',
-          }}>
-            <button
-              onClick={onClose}
-              style={{
-                background: 'none', border: 'none', color: '#fff',
-                cursor: 'pointer', fontSize: 18, padding: '0 8px',
-                opacity: 0.7, pointerEvents: 'auto',
-              }}
-            >
-              ←
-            </button>
-            <ServerIcon size={16} color={hexColor} />
-            <span style={{
-              fontSize: 13, fontWeight: 700, letterSpacing: '0.2em',
-              textTransform: 'uppercase', color: '#fff', fontFamily: 'monospace',
-            }}>
-              SERVER TOWER — {server.name.toUpperCase()}
-            </span>
-          </div>
-          <p style={{
-            fontSize: 10, color: 'rgba(255,255,255,0.3)',
-            marginTop: 8, marginLeft: 4, fontFamily: 'monospace',
-          }}>
-            Left Click + Drag to Rotate │ Scroll to Zoom
-          </p>
         </div>
+      </div>
+
+      {/* ── Header Overlay ── */}
+      <div className="absolute top-8 left-8 z-20 pointer-events-none">
+        <div
+          className="text-sm font-mono tracking-[0.2em] text-white/80 flex items-center gap-3 bg-black/50 p-3 rounded-lg backdrop-blur-md border border-white/10 pointer-events-auto cursor-pointer"
+          onClick={(e) => { e.stopPropagation(); onClose(); }}
+        >
+          <span className="text-lg">←</span>
+          <Server className="w-4 h-4" style={{ color: hexColor }} />
+          SERVER TOWER <span style={{ color: hexColor }}>—</span> {server.name.toUpperCase()}
+        </div>
+        <p className="text-xs text-white/40 mt-2 font-mono ml-1">Click + Drag to Rotate</p>
       </div>
 
       {/* ── Detail Panel ── */}
@@ -484,6 +534,14 @@ export default function InteriorView({ server, onClose }: InteriorViewProps) {
           />
         )}
       </AnimatePresence>
+
+      {/* Shimmer animation */}
+      <style>{`
+        @keyframes shimmer {
+          0% { background-position: 200% 0; }
+          100% { background-position: -200% 0; }
+        }
+      `}</style>
     </motion.div>
   );
 }
