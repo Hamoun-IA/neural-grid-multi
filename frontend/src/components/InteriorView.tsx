@@ -2,12 +2,24 @@
  * InteriorView — CSS 3D Tower (based on David's Css3dApp.tsx)
  * Pure CSS 3D transforms with preserve-3d, no Three.js canvas.
  * Real HTML on each face for crisp text + progress bars.
+ * Mobile responsive: smaller racks, bottom sheet panel, pinch-to-zoom.
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Server, Network, X } from 'lucide-react';
+import { Server, Network, X, ChevronDown } from 'lucide-react';
 import { ServerLayoutItem, Agent } from '../types';
+
+// ─── Responsive hook ──────────────────────────────────────────────────────────
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  useEffect(() => {
+    const h = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', h);
+    return () => window.removeEventListener('resize', h);
+  }, []);
+  return isMobile;
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function formatTime(iso?: string, lastAge?: string): string {
@@ -25,9 +37,7 @@ function formatTokens(used?: number, max?: number): string {
   return '—';
 }
 
-/** Format raw model string to friendly name (handles both mapped & unmapped) */
 function friendlyModel(agent: Agent): string {
-  // Try modelFriendly first (if it's not "Unknown")
   if (agent.modelFriendly && agent.modelFriendly !== 'Unknown' && agent.modelFriendly !== '—') {
     return agent.modelFriendly;
   }
@@ -39,17 +49,27 @@ function friendlyModel(agent: Agent): string {
   return agent.model;
 }
 
-/** Get display name for agent */
 function agentDisplayName(agent: Agent): string {
-  // If name is same as id (e.g. "main"), prefer role
   if (agent.name === agent.id && agent.role) return agent.role;
   return agent.name || agent.role || agent.id;
 }
 
-/** Get subtitle (role or model) */
 function agentSubtitle(agent: Agent): string {
   if (agent.role) return agent.role;
   return friendlyModel(agent);
+}
+
+const NODE_SPACING_DEFAULT = 120;
+
+// ─── Color Palette ────────────────────────────────────────────────────────────
+const RACK_PALETTE = [
+  '#00f0ff', '#ff00ff', '#00ff88', '#ff6600', '#aa66ff', '#ffea00',
+  '#ff3366', '#00ccaa', '#6688ff', '#ff9944', '#44ffaa', '#ff44aa',
+];
+
+function getRackColor(index: number, serverColor: string): string {
+  if (index === 0) return serverColor;
+  return RACK_PALETTE[(index - 1) % RACK_PALETTE.length];
 }
 
 // ─── CSS 3D Server Node ──────────────────────────────────────────────────────
@@ -57,64 +77,34 @@ interface ServerNodeProps {
   agent: Agent;
   index: number;
   total: number;
-  hexColor: string;
   rackColor: string;
   isSelected: boolean;
   spacing: number;
+  isMobile: boolean;
   onClick: () => void;
 }
 
-const NODE_W = 400;  // px
-const NODE_H = 80;   // px
-const NODE_D = 300;  // px (depth)
-const NODE_SPACING_DEFAULT = 120; // px between floors
-
-/** Generate distinct rack colors by cycling hue from the server's base color */
-const RACK_PALETTE = [
-  '#00f0ff', // cyan
-  '#ff00ff', // magenta
-  '#00ff88', // mint
-  '#ff6600', // orange
-  '#aa66ff', // purple
-  '#ffea00', // yellow
-  '#ff3366', // rose
-  '#00ccaa', // teal
-  '#6688ff', // blue
-  '#ff9944', // amber
-  '#44ffaa', // green
-  '#ff44aa', // pink
-];
-
-function getRackColor(index: number, serverColor: string): string {
-  // First rack uses server color, rest cycle through palette
-  if (index === 0) return serverColor;
-  return RACK_PALETTE[(index - 1) % RACK_PALETTE.length];
-}
-
-const ServerNode: React.FC<ServerNodeProps> = ({ agent, index, total, hexColor, rackColor, isSelected, spacing, onClick }) => {
+const ServerNode: React.FC<ServerNodeProps> = ({ agent, index, total, rackColor, isSelected, spacing, isMobile, onClick }) => {
   const isActive = agent.status === 'ACTIVE' || agent.status === 'THINKING';
   const progress = agent.tokensPct ?? 0;
 
-  const statusColor = isActive ? '#22c55e'
-    : agent.status === 'IDLE' ? '#eab308'
-    : '#4b5563';
-  const statusGlow = isActive ? `0 0 8px #22c55e`
-    : agent.status === 'IDLE' ? '' 
-    : '';
+  const nodeW = isMobile ? 240 : 400;
+  const nodeH = isMobile ? 56 : 80;
+  const nodeD = isMobile ? 180 : 300;
+
+  const statusColor = isActive ? '#22c55e' : agent.status === 'IDLE' ? '#eab308' : '#4b5563';
+  const statusGlow = isActive ? '0 0 8px #22c55e' : '';
 
   const yPos = (total - 1 - index) * spacing;
-  const zPos = isSelected ? 80 : 0;
+  const zPos = isSelected ? (isMobile ? 40 : 80) : 0;
 
   return (
     <div
       className="absolute cursor-pointer transition-transform duration-500 ease-out"
       style={{
-        left: '50%',
-        top: '50%',
-        width: NODE_W,
-        height: NODE_H,
-        marginLeft: -NODE_W / 2,
-        marginTop: -NODE_H / 2,
+        left: '50%', top: '50%',
+        width: nodeW, height: nodeH,
+        marginLeft: -nodeW / 2, marginTop: -nodeH / 2,
         transformStyle: 'preserve-3d',
         transform: `translateY(${yPos - (total * spacing) / 2 + 60}px) translateZ(${zPos}px)`,
       }}
@@ -122,215 +112,172 @@ const ServerNode: React.FC<ServerNodeProps> = ({ agent, index, total, hexColor, 
     >
       {/* Front Face */}
       <div
-        className="absolute border-2 bg-[#05050a]/90 backdrop-blur-md flex flex-col justify-between p-4 transition-all duration-500"
+        className="absolute border-2 bg-[#05050a]/90 backdrop-blur-md flex flex-col justify-between transition-all duration-500"
         style={{
-          left: '50%',
-          top: '50%',
-          width: NODE_W,
-          height: NODE_H,
-          marginLeft: -NODE_W / 2,
-          marginTop: -NODE_H / 2,
+          left: '50%', top: '50%',
+          width: nodeW, height: nodeH,
+          marginLeft: -nodeW / 2, marginTop: -nodeH / 2,
+          padding: isMobile ? '8px 12px' : '16px',
           borderColor: isSelected ? rackColor : `${rackColor}40`,
-          transform: `translateZ(${NODE_D / 2}px)`,
+          transform: `translateZ(${nodeD / 2}px)`,
           boxShadow: isSelected ? `0 0 30px ${rackColor}60, 0 0 15px ${rackColor}40 inset` : 'none',
         }}
       >
-        <div style={{ color: rackColor }} className="font-mono text-xl tracking-[0.2em] font-medium">
+        <div style={{ color: rackColor }} className={`font-mono tracking-[0.2em] font-medium ${isMobile ? 'text-sm' : 'text-xl'}`}>
           {agent.name}
         </div>
         <div className="flex justify-between items-end">
-          <div className="flex gap-2.5">
-            <div
-              className={isActive ? 'animate-pulse' : ''}
-              style={{
-                width: 8, height: 8, borderRadius: '50%',
-                backgroundColor: statusColor,
-                boxShadow: statusGlow,
-              }}
-            />
-            <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: rackColor, opacity: 0.4 }} />
-            <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: rackColor, opacity: 0.15 }} />
+          <div className="flex gap-2">
+            <div className={isActive ? 'animate-pulse' : ''} style={{ width: isMobile ? 6 : 8, height: isMobile ? 6 : 8, borderRadius: '50%', backgroundColor: statusColor, boxShadow: statusGlow }} />
+            <div style={{ width: isMobile ? 6 : 8, height: isMobile ? 6 : 8, borderRadius: '50%', backgroundColor: rackColor, opacity: 0.4 }} />
+            <div style={{ width: isMobile ? 6 : 8, height: isMobile ? 6 : 8, borderRadius: '50%', backgroundColor: rackColor, opacity: 0.15 }} />
           </div>
-          <div className="w-48 h-1.5 bg-white/10 rounded-full overflow-hidden">
-            <div
-              className="h-full transition-all duration-500 relative"
-              style={{
-                width: `${progress}%`,
-                backgroundColor: rackColor,
-                boxShadow: `0 0 10px ${rackColor}`,
-              }}
-            >
-              <div
-                className="absolute inset-0 bg-white/30"
-                style={{
-                  backgroundImage: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent)',
-                  backgroundSize: '200% 100%',
-                  animation: 'shimmer 2s infinite linear',
-                }}
-              />
+          <div className={`${isMobile ? 'w-24 h-1' : 'w-48 h-1.5'} bg-white/10 rounded-full overflow-hidden`}>
+            <div className="h-full transition-all duration-500 relative" style={{ width: `${progress}%`, backgroundColor: rackColor, boxShadow: `0 0 10px ${rackColor}` }}>
+              <div className="absolute inset-0 bg-white/30" style={{ backgroundImage: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent)', backgroundSize: '200% 100%', animation: 'shimmer 2s infinite linear' }} />
             </div>
           </div>
         </div>
       </div>
 
       {/* Back Face */}
-      <div
-        className="absolute border bg-[#020205]/90 transition-all duration-500"
-        style={{
-          left: '50%', top: '50%',
-          width: NODE_W, height: NODE_H,
-          marginLeft: -NODE_W / 2, marginTop: -NODE_H / 2,
-          transform: `translateZ(${-NODE_D / 2}px) rotateY(180deg)`,
-          borderColor: isSelected ? rackColor : 'rgba(255,255,255,0.1)',
-          boxShadow: isSelected ? `0 0 20px ${rackColor}20 inset` : 'none',
-        }}
-      />
+      <div className="absolute border bg-[#020205]/90 transition-all duration-500" style={{ left: '50%', top: '50%', width: nodeW, height: nodeH, marginLeft: -nodeW / 2, marginTop: -nodeH / 2, transform: `translateZ(${-nodeD / 2}px) rotateY(180deg)`, borderColor: isSelected ? rackColor : 'rgba(255,255,255,0.1)' }} />
 
       {/* Top Face */}
-      <div
-        className="absolute border bg-[#020205]/80 flex items-center justify-center overflow-hidden transition-all duration-500"
-        style={{
-          left: '50%', top: '50%',
-          width: NODE_W, height: NODE_D,
-          marginLeft: -NODE_W / 2, marginTop: -NODE_D / 2,
-          transform: `translateY(${-NODE_H / 2}px) rotateX(90deg)`,
-          borderColor: isSelected ? rackColor : 'rgba(255,255,255,0.1)',
-          boxShadow: isSelected ? `0 0 40px ${rackColor}20 inset` : 'none',
-        }}
-      >
-        <div
-          className="absolute inset-0 opacity-10"
-          style={{
-            backgroundImage: 'radial-gradient(circle, #fff 1px, transparent 1px)',
-            backgroundSize: '20px 20px',
-          }}
-        />
-        <span
-          className="font-mono text-6xl font-bold tracking-widest transform -rotate-45 transition-colors duration-500"
-          style={{ color: isSelected ? rackColor : 'rgba(255,255,255,0.2)' }}
-        >
+      <div className="absolute border bg-[#020205]/80 flex items-center justify-center overflow-hidden transition-all duration-500" style={{ left: '50%', top: '50%', width: nodeW, height: nodeD, marginLeft: -nodeW / 2, marginTop: -nodeD / 2, transform: `translateY(${-nodeH / 2}px) rotateX(90deg)`, borderColor: isSelected ? rackColor : 'rgba(255,255,255,0.1)', boxShadow: isSelected ? `0 0 40px ${rackColor}20 inset` : 'none' }}>
+        <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle, #fff 1px, transparent 1px)', backgroundSize: '20px 20px' }} />
+        <span className={`font-mono font-bold tracking-widest transform -rotate-45 transition-colors duration-500 ${isMobile ? 'text-3xl' : 'text-6xl'}`} style={{ color: isSelected ? rackColor : 'rgba(255,255,255,0.2)' }}>
           {agent.id.toUpperCase()}
         </span>
       </div>
 
       {/* Bottom Face */}
-      <div
-        className="absolute border bg-[#020205]/90 transition-all duration-500"
-        style={{
-          left: '50%', top: '50%',
-          width: NODE_W, height: NODE_D,
-          marginLeft: -NODE_W / 2, marginTop: -NODE_D / 2,
-          transform: `translateY(${NODE_H / 2}px) rotateX(-90deg)`,
-          borderColor: isSelected ? rackColor : 'rgba(255,255,255,0.1)',
-          boxShadow: isSelected ? `0 0 40px ${rackColor}20 inset` : 'none',
-        }}
-      />
+      <div className="absolute border bg-[#020205]/90 transition-all duration-500" style={{ left: '50%', top: '50%', width: nodeW, height: nodeD, marginLeft: -nodeW / 2, marginTop: -nodeD / 2, transform: `translateY(${nodeH / 2}px) rotateX(-90deg)`, borderColor: isSelected ? rackColor : 'rgba(255,255,255,0.1)' }} />
 
       {/* Left Face */}
-      <div
-        className="absolute border bg-[#030308]/90 transition-all duration-500"
-        style={{
-          left: '50%', top: '50%',
-          width: NODE_D, height: NODE_H,
-          marginLeft: -NODE_D / 2, marginTop: -NODE_H / 2,
-          transform: `translateX(${-NODE_W / 2}px) rotateY(-90deg)`,
-          borderColor: isSelected ? rackColor : 'rgba(255,255,255,0.1)',
-          boxShadow: isSelected ? `0 0 20px ${rackColor}20 inset` : 'none',
-        }}
-      />
+      <div className="absolute border bg-[#030308]/90 transition-all duration-500" style={{ left: '50%', top: '50%', width: nodeD, height: nodeH, marginLeft: -nodeD / 2, marginTop: -nodeH / 2, transform: `translateX(${-nodeW / 2}px) rotateY(-90deg)`, borderColor: isSelected ? rackColor : 'rgba(255,255,255,0.1)' }} />
 
       {/* Right Face */}
-      <div
-        className="absolute border bg-[#030308]/90 transition-all duration-500"
-        style={{
-          left: '50%', top: '50%',
-          width: NODE_D, height: NODE_H,
-          marginLeft: -NODE_D / 2, marginTop: -NODE_H / 2,
-          transform: `translateX(${NODE_W / 2}px) rotateY(90deg)`,
-          borderColor: isSelected ? rackColor : 'rgba(255,255,255,0.1)',
-          boxShadow: isSelected ? `0 0 20px ${rackColor}20 inset` : 'none',
-        }}
-      />
+      <div className="absolute border bg-[#030308]/90 transition-all duration-500" style={{ left: '50%', top: '50%', width: nodeD, height: nodeH, marginLeft: -nodeD / 2, marginTop: -nodeH / 2, transform: `translateX(${nodeW / 2}px) rotateY(90deg)`, borderColor: isSelected ? rackColor : 'rgba(255,255,255,0.1)' }} />
     </div>
   );
 };
 
 // ─── Wireframe Rack ──────────────────────────────────────────────────────────
-const RackTower: React.FC<{ count: number; hexColor: string; spacing: number }> = ({ count, hexColor, spacing }) => {
-  const rackW = NODE_W + 40;
-  const rackD = NODE_D + 40;
+const RackTower: React.FC<{ count: number; hexColor: string; spacing: number; isMobile: boolean }> = ({ count, hexColor, spacing, isMobile }) => {
+  const nodeW = isMobile ? 240 : 400;
+  const nodeD = isMobile ? 180 : 300;
+  const rackW = nodeW + 40;
+  const rackD = nodeD + 40;
   const rackH = count * spacing + 40;
 
   return (
-    <div
-      className="absolute pointer-events-none"
-      style={{
-        left: '50%', top: '50%',
-        width: rackW, height: rackH,
-        marginLeft: -rackW / 2, marginTop: -rackH / 2,
-        transformStyle: 'preserve-3d',
-      }}
-    >
-      {/* Front Frame */}
+    <div className="absolute pointer-events-none" style={{ left: '50%', top: '50%', width: rackW, height: rackH, marginLeft: -rackW / 2, marginTop: -rackH / 2, transformStyle: 'preserve-3d' }}>
       <div className="absolute inset-0 border-2" style={{ borderColor: `${hexColor}33`, transform: `translateZ(${rackD / 2}px)` }} />
-      {/* Back Frame */}
       <div className="absolute inset-0 border-2" style={{ borderColor: `${hexColor}33`, transform: `translateZ(${-rackD / 2}px)` }} />
-      {/* Left Frame */}
-      <div className="absolute top-0 border-2" style={{
-        left: '50%', width: rackD, height: rackH,
-        marginLeft: -rackD / 2,
-        borderColor: `${hexColor}33`,
-        transform: `translateX(${-rackW / 2}px) rotateY(90deg)`,
-      }} />
-      {/* Right Frame */}
-      <div className="absolute top-0 border-2" style={{
-        left: '50%', width: rackD, height: rackH,
-        marginLeft: -rackD / 2,
-        borderColor: `${hexColor}33`,
-        transform: `translateX(${rackW / 2}px) rotateY(90deg)`,
-      }} />
-
-      {/* Shelves */}
+      <div className="absolute top-0 border-2" style={{ left: '50%', width: rackD, height: rackH, marginLeft: -rackD / 2, borderColor: `${hexColor}33`, transform: `translateX(${-rackW / 2}px) rotateY(90deg)` }} />
+      <div className="absolute top-0 border-2" style={{ left: '50%', width: rackD, height: rackH, marginLeft: -rackD / 2, borderColor: `${hexColor}33`, transform: `translateX(${rackW / 2}px) rotateY(90deg)` }} />
       {Array.from({ length: count }).map((_, i) => {
         const serverY = (count - 1 - i) * spacing - (count * spacing) / 2 + 60;
-        const shelfY = serverY + 45;
+        const nodeH = isMobile ? 56 : 80;
+        const shelfY = serverY + nodeH / 2 + 5;
         return (
-          <div
-            key={i}
-            className="absolute border backdrop-blur-sm"
-            style={{
-              left: '50%', top: '50%',
-              width: rackW - 4, height: rackD - 4,
-              marginLeft: -(rackW - 4) / 2, marginTop: -(rackD - 4) / 2,
-              borderColor: `${hexColor}4d`,
-              backgroundColor: 'rgba(15, 23, 42, 0.4)',
-              transform: `translateY(${shelfY}px) rotateX(90deg)`,
-            }}
-          />
+          <div key={i} className="absolute border backdrop-blur-sm" style={{ left: '50%', top: '50%', width: rackW - 4, height: rackD - 4, marginLeft: -(rackW - 4) / 2, marginTop: -(rackD - 4) / 2, borderColor: `${hexColor}4d`, backgroundColor: 'rgba(15, 23, 42, 0.4)', transform: `translateY(${shelfY}px) rotateX(90deg)` }} />
         );
       })}
     </div>
   );
 };
 
-// ─── Detail Panel (from Css3dApp) ─────────────────────────────────────────────
+// ─── Detail Panel ─────────────────────────────────────────────────────────────
 interface DetailPanelProps {
   agent: Agent | null;
-  floorIndex: number;
-  total: number;
   hexColor: string;
   serverName: string;
+  isMobile: boolean;
   onClose: () => void;
 }
 
-const DetailPanel: React.FC<DetailPanelProps> = ({
-  agent, floorIndex, total, hexColor, serverName, onClose,
-}) => {
+const DetailPanel: React.FC<DetailPanelProps> = ({ agent, hexColor, serverName, isMobile, onClose }) => {
   const isActive = agent?.status === 'ACTIVE' || agent?.status === 'THINKING';
   const statusDot = isActive ? 'bg-green-500 shadow-[0_0_8px_#22c55e]'
-    : agent?.status === 'IDLE' ? 'bg-yellow-500'
-    : 'bg-gray-500';
+    : agent?.status === 'IDLE' ? 'bg-yellow-500' : 'bg-gray-500';
 
+  if (isMobile) {
+    // ── Bottom Sheet ──
+    return (
+      <motion.div
+        initial={{ y: '100%' }}
+        animate={{ y: 0 }}
+        exit={{ y: '100%' }}
+        transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+        className="absolute bottom-0 left-0 right-0 bg-[#050508]/95 backdrop-blur-2xl border-t border-white/10 z-30 rounded-t-2xl"
+        style={{ maxHeight: '60vh' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Drag handle */}
+        <div className="flex justify-center py-3">
+          <div className="w-10 h-1 rounded-full bg-white/20" />
+        </div>
+
+        {!agent ? (
+          <div className="px-6 pb-6 text-center">
+            <div className="text-[10px] text-white/30 tracking-[0.2em] font-mono">APPUIE SUR UN RACK</div>
+          </div>
+        ) : (
+          <div className="px-5 pb-6 overflow-y-auto" style={{ maxHeight: 'calc(60vh - 40px)' }}>
+            {/* Header */}
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-lg border flex items-center justify-center text-xl" style={{ borderColor: `${hexColor}4d`, backgroundColor: `${hexColor}1a` }}>
+                {agent.emoji}
+              </div>
+              <div className="flex-1 min-w-0">
+                <h2 className="text-base font-bold tracking-wider truncate">{agentDisplayName(agent)}</h2>
+                <div className="text-xs font-mono" style={{ color: hexColor }}>{agentSubtitle(agent)}</div>
+              </div>
+              <button onClick={onClose} className="text-white/40 p-1"><ChevronDown className="w-5 h-5" /></button>
+            </div>
+
+            {/* Status */}
+            <div className="flex items-center justify-between bg-white/5 p-3 rounded-lg border border-white/5 mb-3">
+              <span className="text-white/40 text-[10px] font-mono tracking-wider">STATUT</span>
+              <div className="flex items-center gap-2 text-xs font-mono">
+                <span className={`w-2 h-2 rounded-full ${statusDot}`} />
+                {agent.status}
+              </div>
+            </div>
+
+            {/* 2×3 grid */}
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              {[
+                ['MODÈLE', friendlyModel(agent)],
+                ['UPTIME', formatTime(agent.lastActiveAt, agent.lastAge)],
+                ['ACTIVITÉ', formatTime(agent.lastActiveAt, agent.lastAge)],
+                ['TOKENS', formatTokens(agent.tokensUsed, agent.tokensMax)],
+                ['MESSAGES', String(agent.sessionCount ?? 0)],
+                ['SESSIONS', String(agent.activeSessions ?? 0)],
+              ].map(([label, val]) => (
+                <div key={label} className="bg-white/5 rounded-lg p-2.5 border border-white/5">
+                  <div className="text-white/40 text-[9px] mb-0.5 font-mono tracking-wider">{label}</div>
+                  <div className="text-xs font-medium truncate">{val}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Mesh */}
+            <div className="bg-white/5 rounded-lg p-2.5 border border-white/5">
+              <div className="text-white/40 text-[9px] mb-1 font-mono tracking-wider flex items-center gap-1">
+                <Network className="w-3 h-3" /> MESH
+              </div>
+              <span className="px-2 py-0.5 bg-white/5 border rounded text-xs font-mono" style={{ borderColor: `${hexColor}4d`, color: hexColor }}>{serverName}</span>
+            </div>
+          </div>
+        )}
+      </motion.div>
+    );
+  }
+
+  // ── Desktop Side Panel ──
   return (
     <motion.div
       initial={{ x: '100%' }}
@@ -340,10 +287,7 @@ const DetailPanel: React.FC<DetailPanelProps> = ({
       className="w-96 bg-[#050508]/90 backdrop-blur-2xl border-l border-white/10 p-8 flex flex-col shadow-2xl"
       style={{ position: 'relative', zIndex: 30, height: '100%', flexShrink: 0 }}
     >
-      <button
-        onClick={onClose}
-        className="absolute top-6 right-6 text-white/40 hover:text-white transition-colors cursor-pointer"
-      >
+      <button onClick={onClose} className="absolute top-6 right-6 text-white/40 hover:text-white transition-colors cursor-pointer">
         <X className="w-5 h-5" />
       </button>
 
@@ -355,17 +299,12 @@ const DetailPanel: React.FC<DetailPanelProps> = ({
       ) : (
         <>
           <div className="flex items-center gap-4 mb-6 mt-2">
-            <div
-              className="w-14 h-14 rounded-xl border flex items-center justify-center text-3xl"
-              style={{ borderColor: `${hexColor}4d`, backgroundColor: `${hexColor}1a` }}
-            >
+            <div className="w-14 h-14 rounded-xl border flex items-center justify-center text-3xl" style={{ borderColor: `${hexColor}4d`, backgroundColor: `${hexColor}1a` }}>
               {agent.emoji}
             </div>
             <div>
               <h2 className="text-xl font-bold tracking-wider">{agentDisplayName(agent)}</h2>
-              <div className="text-sm font-mono mt-1" style={{ color: hexColor }}>
-                {agentSubtitle(agent)}
-              </div>
+              <div className="text-sm font-mono mt-1" style={{ color: hexColor }}>{agentSubtitle(agent)}</div>
             </div>
           </div>
 
@@ -379,30 +318,19 @@ const DetailPanel: React.FC<DetailPanelProps> = ({
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <div className="bg-white/5 rounded-lg p-3 border border-white/5">
-                <div className="text-white/40 text-[10px] mb-1 font-mono tracking-wider">MODÈLE</div>
-                <div className="text-sm font-medium">{friendlyModel(agent)}</div>
-              </div>
-              <div className="bg-white/5 rounded-lg p-3 border border-white/5">
-                <div className="text-white/40 text-[10px] mb-1 font-mono tracking-wider">UPTIME</div>
-                <div className="text-sm font-medium">{formatTime(agent.lastActiveAt, agent.lastAge)}</div>
-              </div>
-              <div className="bg-white/5 rounded-lg p-3 border border-white/5">
-                <div className="text-white/40 text-[10px] mb-1 font-mono tracking-wider">DERNIÈRE ACTIVITÉ</div>
-                <div className="text-sm font-medium">{formatTime(agent.lastActiveAt, agent.lastAge)}</div>
-              </div>
-              <div className="bg-white/5 rounded-lg p-3 border border-white/5">
-                <div className="text-white/40 text-[10px] mb-1 font-mono tracking-wider">LATENCE (MOY)</div>
-                <div className="text-sm font-medium">—</div>
-              </div>
-              <div className="bg-white/5 rounded-lg p-3 border border-white/5">
-                <div className="text-white/40 text-[10px] mb-1 font-mono tracking-wider">TOKENS (IN/OUT)</div>
-                <div className="text-sm font-medium">{formatTokens(agent.tokensUsed, agent.tokensMax)}</div>
-              </div>
-              <div className="bg-white/5 rounded-lg p-3 border border-white/5">
-                <div className="text-white/40 text-[10px] mb-1 font-mono tracking-wider">MESSAGES TRAITÉS</div>
-                <div className="text-sm font-medium">{agent.sessionCount ?? 0}</div>
-              </div>
+              {[
+                ['MODÈLE', friendlyModel(agent)],
+                ['UPTIME', formatTime(agent.lastActiveAt, agent.lastAge)],
+                ['DERNIÈRE ACTIVITÉ', formatTime(agent.lastActiveAt, agent.lastAge)],
+                ['LATENCE (MOY)', '—'],
+                ['TOKENS (IN/OUT)', formatTokens(agent.tokensUsed, agent.tokensMax)],
+                ['MESSAGES TRAITÉS', String(agent.sessionCount ?? 0)],
+              ].map(([label, val]) => (
+                <div key={label} className="bg-white/5 rounded-lg p-3 border border-white/5">
+                  <div className="text-white/40 text-[10px] mb-1 font-mono tracking-wider">{label}</div>
+                  <div className="text-sm font-medium">{val}</div>
+                </div>
+              ))}
             </div>
 
             <div className="bg-white/5 rounded-lg p-3 border border-white/5">
@@ -422,15 +350,8 @@ const DetailPanel: React.FC<DetailPanelProps> = ({
                 <Network className="w-3 h-3" /> CONNEXIONS MESH
               </div>
               <div className="flex flex-wrap gap-2">
-                <span
-                  className="px-2 py-1 bg-white/5 border rounded text-xs font-mono"
-                  style={{ borderColor: `${hexColor}4d`, color: hexColor }}
-                >
-                  {serverName}
-                </span>
-                {!isActive && (
-                  <span className="text-xs text-white/30 font-mono italic">Aucune connexion active</span>
-                )}
+                <span className="px-2 py-1 bg-white/5 border rounded text-xs font-mono" style={{ borderColor: `${hexColor}4d`, color: hexColor }}>{serverName}</span>
+                {!isActive && <span className="text-xs text-white/30 font-mono italic">Aucune connexion active</span>}
               </div>
             </div>
           </div>
@@ -447,15 +368,22 @@ interface InteriorViewProps {
 }
 
 export default function InteriorView({ server, onClose }: InteriorViewProps) {
+  const isMobile = useIsMobile();
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [rotation, setRotation] = useState({ x: -15, y: -30 });
-  // Auto-scale zoom based on agent count so all racks fit
   const agentCount = server?.agents?.length ?? 6;
-  const nodeSpacing = agentCount > 8 ? 100 : NODE_SPACING_DEFAULT;
-  const defaultZoom = agentCount > 10 ? 0.3 : agentCount > 7 ? 0.4 : 0.6;
+  const nodeSpacing = isMobile
+    ? (agentCount > 8 ? 65 : 75)
+    : (agentCount > 8 ? 100 : NODE_SPACING_DEFAULT);
+  const defaultZoom = isMobile
+    ? (agentCount > 10 ? 0.25 : agentCount > 7 ? 0.35 : 0.5)
+    : (agentCount > 10 ? 0.3 : agentCount > 7 ? 0.4 : 0.6);
   const [zoom, setZoom] = useState(defaultZoom);
   const [isDragging, setIsDragging] = useState(false);
   const [lastPos, setLastPos] = useState({ x: 0, y: 0 });
+
+  // Pinch-to-zoom
+  const lastPinchDist = useRef(0);
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -466,50 +394,53 @@ export default function InteriorView({ server, onClose }: InteriorViewProps) {
   if (!server) return null;
 
   const hexColor = server.color;
-  // Reverse so "main" (first from API) is at the top of the tower
   const agents = useMemo(() => [...server.agents].reverse(), [server.agents]);
   const selectedAgent = agents.find((a) => a.id === selectedAgentId) ?? null;
-  const selectedFloorIndex = selectedAgent ? agents.indexOf(selectedAgent) : 0;
 
-  // ── Mouse drag to rotate ──
-  const handleMouseDown = (e: React.MouseEvent) => {
-    setIsDragging(true);
-    setLastPos({ x: e.clientX, y: e.clientY });
-  };
+  // ── Mouse drag ──
+  const handleMouseDown = (e: React.MouseEvent) => { setIsDragging(true); setLastPos({ x: e.clientX, y: e.clientY }); };
   const handleMouseMove = (e: React.MouseEvent) => {
     if (!isDragging) return;
-    const dx = e.clientX - lastPos.x;
-    const dy = e.clientY - lastPos.y;
-    setRotation(prev => ({
-      x: Math.max(-80, Math.min(80, prev.x - dy * 0.5)),
-      y: prev.y + dx * 0.5,
-    }));
+    setRotation(prev => ({ x: Math.max(-80, Math.min(80, prev.x - (e.clientY - lastPos.y) * 0.5)), y: prev.y + (e.clientX - lastPos.x) * 0.5 }));
     setLastPos({ x: e.clientX, y: e.clientY });
   };
   const handleMouseUp = () => setIsDragging(false);
 
-  // ── Touch handlers ──
+  // ── Touch: 1-finger rotate, 2-finger pinch zoom ──
   const handleTouchStart = (e: React.TouchEvent) => {
-    if (e.touches.length !== 1) return;
-    setIsDragging(true);
-    setLastPos({ x: e.touches[0].clientX, y: e.touches[0].clientY });
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      lastPinchDist.current = Math.hypot(dx, dy);
+    } else if (e.touches.length === 1) {
+      setIsDragging(true);
+      setLastPos({ x: e.touches[0].clientX, y: e.touches[0].clientY });
+    }
   };
   const handleTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.hypot(dx, dy);
+      if (lastPinchDist.current > 0) {
+        const delta = (dist - lastPinchDist.current) * 0.005;
+        setZoom(prev => Math.max(0.15, Math.min(2, prev + delta)));
+      }
+      lastPinchDist.current = dist;
+      return;
+    }
     if (!isDragging || e.touches.length !== 1) return;
-    const dx = e.touches[0].clientX - lastPos.x;
-    const dy = e.touches[0].clientY - lastPos.y;
-    setRotation(prev => ({
-      x: Math.max(-80, Math.min(80, prev.x - dy * 0.5)),
-      y: prev.y + dx * 0.5,
-    }));
+    const dx2 = e.touches[0].clientX - lastPos.x;
+    const dy2 = e.touches[0].clientY - lastPos.y;
+    setRotation(prev => ({ x: Math.max(-80, Math.min(80, prev.x - dy2 * 0.5)), y: prev.y + dx2 * 0.5 }));
     setLastPos({ x: e.touches[0].clientX, y: e.touches[0].clientY });
   };
-  const handleTouchEnd = () => setIsDragging(false);
+  const handleTouchEnd = () => { setIsDragging(false); lastPinchDist.current = 0; };
 
   // ── Scroll zoom ──
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
-    setZoom(prev => Math.max(0.2, Math.min(2, prev + e.deltaY * -0.001)));
+    setZoom(prev => Math.max(0.15, Math.min(2, prev + e.deltaY * -0.001)));
   };
 
   return (
@@ -519,7 +450,7 @@ export default function InteriorView({ server, onClose }: InteriorViewProps) {
       exit={{ opacity: 0 }}
       transition={{ duration: 0.25 }}
       className="w-screen h-screen bg-[#030305] text-white flex overflow-hidden font-sans"
-      style={{ position: 'fixed', inset: 0, zIndex: 100, perspective: '1200px' }}
+      style={{ position: 'fixed', inset: 0, zIndex: 100, perspective: isMobile ? '800px' : '1200px', flexDirection: isMobile ? 'column' : 'row' }}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
@@ -530,85 +461,64 @@ export default function InteriorView({ server, onClose }: InteriorViewProps) {
       onWheel={handleWheel}
     >
       {/* ── CSS 3D Scene ── */}
-      <div className="flex-1 relative cursor-move w-full h-full flex items-center justify-center"
-        style={{ transformStyle: 'preserve-3d' }}
-      >
-        <div
-          className="transition-transform duration-100 ease-linear"
-          style={{
-            transform: `scale(${zoom}) rotateX(${rotation.x}deg) rotateY(${rotation.y}deg)`,
-            transformStyle: 'preserve-3d',
-          }}
-        >
+      <div className="flex-1 relative cursor-move w-full h-full flex items-center justify-center" style={{ transformStyle: 'preserve-3d' }}>
+        <div className="transition-transform duration-100 ease-linear" style={{ transform: `scale(${zoom}) rotateX(${rotation.x}deg) rotateY(${rotation.y}deg)`, transformStyle: 'preserve-3d' }}>
           {/* Floor Grid */}
-          <div
-            className="absolute border"
-            style={{
-              left: '50%', top: '50%',
-              width: 1000, height: 1000,
-              marginLeft: -500, marginTop: -500,
-              transform: `translateY(${agents.length * nodeSpacing / 2 + 40}px) rotateX(90deg)`,
-              backgroundImage: `linear-gradient(${hexColor}33 1px, transparent 1px), linear-gradient(90deg, ${hexColor}33 1px, transparent 1px)`,
-              backgroundSize: '50px 50px',
-              backgroundColor: '#020617',
-              borderColor: `${hexColor}20`,
-            }}
-          />
+          <div className="absolute border" style={{
+            left: '50%', top: '50%',
+            width: isMobile ? 600 : 1000, height: isMobile ? 600 : 1000,
+            marginLeft: isMobile ? -300 : -500, marginTop: isMobile ? -300 : -500,
+            transform: `translateY(${agents.length * nodeSpacing / 2 + 40}px) rotateX(90deg)`,
+            backgroundImage: `linear-gradient(${hexColor}33 1px, transparent 1px), linear-gradient(90deg, ${hexColor}33 1px, transparent 1px)`,
+            backgroundSize: isMobile ? '40px 40px' : '50px 50px',
+            backgroundColor: '#020617', borderColor: `${hexColor}20`,
+          }} />
 
-          {/* Rack Tower wireframe */}
-          <RackTower count={agents.length} hexColor={hexColor} spacing={nodeSpacing} />
+          <RackTower count={agents.length} hexColor={hexColor} spacing={nodeSpacing} isMobile={isMobile} />
 
-          {/* Server Nodes */}
           {agents.map((agent, i) => (
             <ServerNode
               key={agent.id}
               agent={agent}
               index={i}
               total={agents.length}
-              hexColor={hexColor}
               rackColor={getRackColor(i, hexColor)}
               isSelected={selectedAgentId === agent.id}
               spacing={nodeSpacing}
+              isMobile={isMobile}
               onClick={() => setSelectedAgentId(prev => prev === agent.id ? null : agent.id)}
             />
           ))}
         </div>
       </div>
 
-      {/* ── Header Overlay ── */}
-      <div className="absolute top-8 left-8 z-20 pointer-events-none">
+      {/* ── Header ── */}
+      <div className={`absolute z-20 pointer-events-none ${isMobile ? 'top-4 left-4 right-4' : 'top-8 left-8'}`}>
         <div
-          className="text-sm font-mono tracking-[0.2em] text-white/80 flex items-center gap-3 bg-black/50 p-3 rounded-lg backdrop-blur-md border border-white/10 pointer-events-auto cursor-pointer"
+          className={`font-mono tracking-[0.15em] text-white/80 flex items-center gap-2 bg-black/50 rounded-lg backdrop-blur-md border border-white/10 pointer-events-auto cursor-pointer ${isMobile ? 'text-xs p-2' : 'text-sm p-3'}`}
           onClick={(e) => { e.stopPropagation(); onClose(); }}
         >
-          <span className="text-lg">←</span>
-          <Server className="w-4 h-4" style={{ color: hexColor }} />
-          SERVER TOWER <span style={{ color: hexColor }}>—</span> {server.name.toUpperCase()}
+          <span className={isMobile ? 'text-base' : 'text-lg'}>←</span>
+          <Server className={isMobile ? 'w-3 h-3' : 'w-4 h-4'} style={{ color: hexColor }} />
+          {isMobile ? server.name.toUpperCase() : <>SERVER TOWER <span style={{ color: hexColor }}>—</span> {server.name.toUpperCase()}</>}
         </div>
-        <p className="text-xs text-white/40 mt-2 font-mono ml-1">Click + Drag to Rotate │ Scroll to Zoom</p>
+        {!isMobile && <p className="text-xs text-white/40 mt-2 font-mono ml-1">Click + Drag to Rotate │ Scroll to Zoom</p>}
       </div>
 
-      {/* ── Detail Panel ── */}
+      {/* ── Detail Panel (side on desktop, bottom sheet on mobile) ── */}
       <AnimatePresence>
-        {(selectedAgent || true) && (
+        {(selectedAgent || !isMobile) && (
           <DetailPanel
             agent={selectedAgent}
-            floorIndex={selectedFloorIndex}
-            total={agents.length}
             hexColor={selectedAgent ? getRackColor(agents.indexOf(selectedAgent), hexColor) : hexColor}
             serverName={server.name}
+            isMobile={isMobile}
             onClose={() => setSelectedAgentId(null)}
           />
         )}
       </AnimatePresence>
 
-      {/* Shimmer animation */}
-      <style>{`
-        @keyframes shimmer {
-          0% { background-position: 200% 0; }
-          100% { background-position: -200% 0; }
-        }
-      `}</style>
+      <style>{`@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }`}</style>
     </motion.div>
   );
 }
