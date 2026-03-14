@@ -92,7 +92,7 @@ const ServerNode: React.FC<ServerNodeProps> = ({ agent, index, total, hexColor, 
         color={hexColor}
         anchorX="center"
         anchorY="middle"
-        font="https://fonts.gstatic.com/s/jetbrainsmono/v18/tDbY2o-flEEny0FZhsfKu5WU4xD-IQ-PuZJJXxfpAO-Lfjk.woff"
+        
         letterSpacing={0.15}
         maxWidth={W - 0.4}
       >
@@ -150,7 +150,7 @@ const ServerNode: React.FC<ServerNodeProps> = ({ agent, index, total, hexColor, 
         color={isSelected ? hexColor : '#ffffff'}
         anchorX="center"
         anchorY="middle"
-        font="https://fonts.gstatic.com/s/jetbrainsmono/v18/tDbY2o-flEEny0FZhsfKu5WU4xD-IQ-PuZJJXxfpAO-Lfjk.woff"
+        
         letterSpacing={0.2}
         fillOpacity={isSelected ? 0.3 : 0.08}
       >
