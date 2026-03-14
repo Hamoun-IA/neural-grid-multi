@@ -65,11 +65,18 @@ export function mapApiServer(raw: any): Partial<Server> {
   const agents: Agent[] = (raw.agents ?? []).map((a: any) => ({
     id: a.id,
     name: a.name,
-    emoji: getEmoji(a.id, a.name),
-    model: mapModel(a.model ?? 'Sonnet'),
+    emoji: a.emoji || getEmoji(a.id, a.name),
+    model: a.model ? mapModel(a.model) : 'Sonnet',
     status: mapAgentStatus(a.status),
     sessionCount: a.sessionCount,
     lastActiveAt: a.lastActiveAt,
+    // V2 reporter fields
+    modelFriendly: a.modelFriendly || (a.model ? mapModel(a.model) : undefined),
+    tokensUsed: a.tokensUsed,
+    tokensMax: a.tokensMax,
+    tokensPct: a.tokensPct,
+    role: a.role,
+    activeSessions: a.activeSessions,
   }));
 
   return {
@@ -81,6 +88,7 @@ export function mapApiServer(raw: any): Partial<Server> {
     agentCount: raw.agentCount ?? agents.length,
     latencyMs: raw.latencyMs,
     lastSeen: raw.lastSeen,
+    system: raw.system,
   };
 }
 
