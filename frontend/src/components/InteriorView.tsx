@@ -493,15 +493,15 @@ export default function InteriorView({ server, onClose }: InteriorViewProps) {
       </div>
 
       {/* ── Header ── */}
-      <div className={`absolute z-20 pointer-events-none ${isMobile ? 'top-4 left-4 right-4' : 'top-8 left-8'}`}>
-        <div
-          className={`font-mono tracking-[0.15em] text-white/80 flex items-center gap-2 bg-black/50 rounded-lg backdrop-blur-md border border-white/10 pointer-events-auto cursor-pointer ${isMobile ? 'text-xs p-2' : 'text-sm p-3'}`}
+      <div className={`absolute z-20 ${isMobile ? 'top-4 left-4 right-4 flex items-start justify-between' : 'top-8 left-8'}`}>
+        <button
+          className={`font-mono tracking-[0.15em] text-white/80 flex items-center gap-2 bg-black/60 rounded-lg backdrop-blur-md border border-white/10 cursor-pointer active:scale-95 transition-transform ${isMobile ? 'text-xs px-3 py-2.5' : 'text-sm p-3'}`}
           onClick={(e) => { e.stopPropagation(); onClose(); }}
         >
-          <span className={isMobile ? 'text-base' : 'text-lg'}>←</span>
-          <Server className={isMobile ? 'w-3 h-3' : 'w-4 h-4'} style={{ color: hexColor }} />
+          <span className={isMobile ? 'text-lg' : 'text-lg'}>←</span>
+          <Server className={isMobile ? 'w-3.5 h-3.5' : 'w-4 h-4'} style={{ color: hexColor }} />
           {isMobile ? server.name.toUpperCase() : <>SERVER TOWER <span style={{ color: hexColor }}>—</span> {server.name.toUpperCase()}</>}
-        </div>
+        </button>
         {!isMobile && <p className="text-xs text-white/40 mt-2 font-mono ml-1">Click + Drag to Rotate │ Scroll to Zoom</p>}
       </div>
 
