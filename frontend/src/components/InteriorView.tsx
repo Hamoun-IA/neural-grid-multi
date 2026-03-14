@@ -58,6 +58,7 @@ interface ServerNodeProps {
   index: number;
   total: number;
   hexColor: string;
+  rackColor: string;
   isSelected: boolean;
   spacing: number;
   onClick: () => void;
@@ -68,7 +69,29 @@ const NODE_H = 80;   // px
 const NODE_D = 300;  // px (depth)
 const NODE_SPACING_DEFAULT = 120; // px between floors
 
-const ServerNode: React.FC<ServerNodeProps> = ({ agent, index, total, hexColor, isSelected, spacing, onClick }) => {
+/** Generate distinct rack colors by cycling hue from the server's base color */
+const RACK_PALETTE = [
+  '#00f0ff', // cyan
+  '#ff00ff', // magenta
+  '#00ff88', // mint
+  '#ff6600', // orange
+  '#aa66ff', // purple
+  '#ffea00', // yellow
+  '#ff3366', // rose
+  '#00ccaa', // teal
+  '#6688ff', // blue
+  '#ff9944', // amber
+  '#44ffaa', // green
+  '#ff44aa', // pink
+];
+
+function getRackColor(index: number, serverColor: string): string {
+  // First rack uses server color, rest cycle through palette
+  if (index === 0) return serverColor;
+  return RACK_PALETTE[(index - 1) % RACK_PALETTE.length];
+}
+
+const ServerNode: React.FC<ServerNodeProps> = ({ agent, index, total, hexColor, rackColor, isSelected, spacing, onClick }) => {
   const isActive = agent.status === 'ACTIVE' || agent.status === 'THINKING';
   const progress = agent.tokensPct ?? 0;
 
@@ -107,12 +130,12 @@ const ServerNode: React.FC<ServerNodeProps> = ({ agent, index, total, hexColor, 
           height: NODE_H,
           marginLeft: -NODE_W / 2,
           marginTop: -NODE_H / 2,
-          borderColor: isSelected ? hexColor : `${hexColor}40`,
+          borderColor: isSelected ? rackColor : `${rackColor}40`,
           transform: `translateZ(${NODE_D / 2}px)`,
-          boxShadow: isSelected ? `0 0 30px ${hexColor}60, 0 0 15px ${hexColor}40 inset` : 'none',
+          boxShadow: isSelected ? `0 0 30px ${rackColor}60, 0 0 15px ${rackColor}40 inset` : 'none',
         }}
       >
-        <div style={{ color: hexColor }} className="font-mono text-xl tracking-[0.2em] font-medium">
+        <div style={{ color: rackColor }} className="font-mono text-xl tracking-[0.2em] font-medium">
           {agent.name}
         </div>
         <div className="flex justify-between items-end">
@@ -125,16 +148,16 @@ const ServerNode: React.FC<ServerNodeProps> = ({ agent, index, total, hexColor, 
                 boxShadow: statusGlow,
               }}
             />
-            <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: hexColor, opacity: 0.4 }} />
-            <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: hexColor, opacity: 0.15 }} />
+            <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: rackColor, opacity: 0.4 }} />
+            <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: rackColor, opacity: 0.15 }} />
           </div>
           <div className="w-48 h-1.5 bg-white/10 rounded-full overflow-hidden">
             <div
               className="h-full transition-all duration-500 relative"
               style={{
                 width: `${progress}%`,
-                backgroundColor: hexColor,
-                boxShadow: `0 0 10px ${hexColor}`,
+                backgroundColor: rackColor,
+                boxShadow: `0 0 10px ${rackColor}`,
               }}
             >
               <div
@@ -158,8 +181,8 @@ const ServerNode: React.FC<ServerNodeProps> = ({ agent, index, total, hexColor, 
           width: NODE_W, height: NODE_H,
           marginLeft: -NODE_W / 2, marginTop: -NODE_H / 2,
           transform: `translateZ(${-NODE_D / 2}px) rotateY(180deg)`,
-          borderColor: isSelected ? hexColor : 'rgba(255,255,255,0.1)',
-          boxShadow: isSelected ? `0 0 20px ${hexColor}20 inset` : 'none',
+          borderColor: isSelected ? rackColor : 'rgba(255,255,255,0.1)',
+          boxShadow: isSelected ? `0 0 20px ${rackColor}20 inset` : 'none',
         }}
       />
 
@@ -171,8 +194,8 @@ const ServerNode: React.FC<ServerNodeProps> = ({ agent, index, total, hexColor, 
           width: NODE_W, height: NODE_D,
           marginLeft: -NODE_W / 2, marginTop: -NODE_D / 2,
           transform: `translateY(${-NODE_H / 2}px) rotateX(90deg)`,
-          borderColor: isSelected ? hexColor : 'rgba(255,255,255,0.1)',
-          boxShadow: isSelected ? `0 0 40px ${hexColor}20 inset` : 'none',
+          borderColor: isSelected ? rackColor : 'rgba(255,255,255,0.1)',
+          boxShadow: isSelected ? `0 0 40px ${rackColor}20 inset` : 'none',
         }}
       >
         <div
@@ -184,7 +207,7 @@ const ServerNode: React.FC<ServerNodeProps> = ({ agent, index, total, hexColor, 
         />
         <span
           className="font-mono text-6xl font-bold tracking-widest transform -rotate-45 transition-colors duration-500"
-          style={{ color: isSelected ? hexColor : 'rgba(255,255,255,0.2)' }}
+          style={{ color: isSelected ? rackColor : 'rgba(255,255,255,0.2)' }}
         >
           {agent.id.toUpperCase()}
         </span>
@@ -198,8 +221,8 @@ const ServerNode: React.FC<ServerNodeProps> = ({ agent, index, total, hexColor, 
           width: NODE_W, height: NODE_D,
           marginLeft: -NODE_W / 2, marginTop: -NODE_D / 2,
           transform: `translateY(${NODE_H / 2}px) rotateX(-90deg)`,
-          borderColor: isSelected ? hexColor : 'rgba(255,255,255,0.1)',
-          boxShadow: isSelected ? `0 0 40px ${hexColor}20 inset` : 'none',
+          borderColor: isSelected ? rackColor : 'rgba(255,255,255,0.1)',
+          boxShadow: isSelected ? `0 0 40px ${rackColor}20 inset` : 'none',
         }}
       />
 
@@ -211,8 +234,8 @@ const ServerNode: React.FC<ServerNodeProps> = ({ agent, index, total, hexColor, 
           width: NODE_D, height: NODE_H,
           marginLeft: -NODE_D / 2, marginTop: -NODE_H / 2,
           transform: `translateX(${-NODE_W / 2}px) rotateY(-90deg)`,
-          borderColor: isSelected ? hexColor : 'rgba(255,255,255,0.1)',
-          boxShadow: isSelected ? `0 0 20px ${hexColor}20 inset` : 'none',
+          borderColor: isSelected ? rackColor : 'rgba(255,255,255,0.1)',
+          boxShadow: isSelected ? `0 0 20px ${rackColor}20 inset` : 'none',
         }}
       />
 
@@ -224,8 +247,8 @@ const ServerNode: React.FC<ServerNodeProps> = ({ agent, index, total, hexColor, 
           width: NODE_D, height: NODE_H,
           marginLeft: -NODE_D / 2, marginTop: -NODE_H / 2,
           transform: `translateX(${NODE_W / 2}px) rotateY(90deg)`,
-          borderColor: isSelected ? hexColor : 'rgba(255,255,255,0.1)',
-          boxShadow: isSelected ? `0 0 20px ${hexColor}20 inset` : 'none',
+          borderColor: isSelected ? rackColor : 'rgba(255,255,255,0.1)',
+          boxShadow: isSelected ? `0 0 20px ${rackColor}20 inset` : 'none',
         }}
       />
     </div>
@@ -543,6 +566,7 @@ export default function InteriorView({ server, onClose }: InteriorViewProps) {
               index={i}
               total={agents.length}
               hexColor={hexColor}
+              rackColor={getRackColor(i, hexColor)}
               isSelected={selectedAgentId === agent.id}
               spacing={nodeSpacing}
               onClick={() => setSelectedAgentId(prev => prev === agent.id ? null : agent.id)}
@@ -571,7 +595,7 @@ export default function InteriorView({ server, onClose }: InteriorViewProps) {
             agent={selectedAgent}
             floorIndex={selectedFloorIndex}
             total={agents.length}
-            hexColor={hexColor}
+            hexColor={selectedAgent ? getRackColor(agents.indexOf(selectedAgent), hexColor) : hexColor}
             serverName={server.name}
             onClose={() => setSelectedAgentId(null)}
           />
