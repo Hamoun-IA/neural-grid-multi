@@ -8,7 +8,7 @@ import React, { useState, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Server as ServerIcon, Cpu, Network, Database, X } from 'lucide-react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls, Edges, Html } from '@react-three/drei';
+import { OrbitControls, Edges, Html, Text } from '@react-three/drei';
 import * as THREE from 'three';
 import { ServerLayoutItem, Agent } from '../types';
 
@@ -34,7 +34,7 @@ function formatTokens(used?: number, max?: number): string {
   return max ? `${fmt(used)} / ${fmt(max)}` : fmt(used);
 }
 
-// ─── 3D Server Node (matches David's Css3dApp rack design) ───────────────────
+// ─── 3D Server Node ──────────────────────────────────────────────────────────
 interface ServerNodeProps {
   agent: Agent;
   index: number;
@@ -48,22 +48,17 @@ const ServerNode: React.FC<ServerNodeProps> = ({ agent, index, total, hexColor, 
   const groupRef = useRef<THREE.Group>(null!);
   const isActive = agent.status === 'ACTIVE' || agent.status === 'THINKING';
 
-  // Stack from top to bottom (index 0 is highest)
   const baseY = (total - 1 - index) * SPACING + H / 2 + 0.5;
-  const progress = agent.tokensPct ?? 0;
+  const progress = (agent.tokensPct ?? 0) / 100;
 
-  // Status dot color
   const statusColor = isActive ? '#22c55e'
     : agent.status === 'IDLE' ? '#eab308'
     : '#4b5563';
-  const statusGlow = isActive ? '0 0 8px #22c55e' : 'none';
 
   useFrame(() => {
     if (!groupRef.current) return;
-    // Smoothly pull out selected server
     const targetZ = isSelected ? 0.8 : 0;
     groupRef.current.position.z = THREE.MathUtils.lerp(groupRef.current.position.z, targetZ, 0.1);
-    // Subtle vibration if active
     if (isActive) {
       groupRef.current.position.x = (Math.random() - 0.5) * 0.02;
     } else {
@@ -88,96 +83,79 @@ const ServerNode: React.FC<ServerNodeProps> = ({ agent, index, total, hexColor, 
           emissiveIntensity={isSelected ? 0.15 : 0.02}
         />
         <Edges scale={1.001} threshold={15} color={hexColor} opacity={isSelected ? 1 : 0.5} transparent />
-
-        {/* Front Panel UI — matches Css3dApp exactly */}
-        <Html
-          transform
-          position={[0, 0, D / 2 + 0.001]}
-          scale={0.01}
-          zIndexRange={[100, 0]}
-        >
-          <div
-            className="flex flex-col justify-between p-6 box-border cursor-pointer transition-all duration-500"
-            style={{
-              width: `${W * 100}px`,
-              height: `${H * 100}px`,
-              backgroundColor: isSelected ? 'rgba(2, 6, 23, 0.95)' : 'rgba(2, 6, 23, 0.8)',
-              borderColor: isSelected ? hexColor : `${hexColor}40`,
-              borderWidth: 2,
-              borderStyle: 'solid',
-              backdropFilter: 'blur(8px)',
-              boxShadow: isSelected ? `0 0 30px ${hexColor}60, 0 0 15px ${hexColor}40 inset` : 'none',
-            }}
-          >
-            {/* Agent name — big, tracking wide, mono */}
-            <div style={{ color: hexColor }} className="font-mono text-2xl tracking-[0.2em] font-medium">
-              {agent.name.toUpperCase()}
-            </div>
-            <div className="flex justify-between items-end">
-              {/* Status dots: green=active, yellow=idle, gray=other */}
-              <div className="flex gap-2.5">
-                <div
-                  className={isActive ? 'animate-pulse' : ''}
-                  style={{
-                    width: 10, height: 10, borderRadius: '50%',
-                    backgroundColor: statusColor,
-                    boxShadow: statusGlow,
-                  }}
-                />
-                <div style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: hexColor, opacity: 0.4 }} />
-                <div style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: hexColor, opacity: 0.15 }} />
-              </div>
-              {/* Progress bar with shimmer */}
-              <div className="w-48 h-1.5 bg-white/10 rounded-full overflow-hidden">
-                <div
-                  className="h-full transition-all duration-500 relative"
-                  style={{
-                    width: `${progress}%`,
-                    backgroundColor: hexColor,
-                    boxShadow: `0 0 10px ${hexColor}`,
-                  }}
-                >
-                  <div
-                    className="absolute inset-0 bg-white/30"
-                    style={{
-                      animation: 'shimmer 2s infinite',
-                      backgroundImage: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent)',
-                      backgroundSize: '200% 100%',
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        </Html>
-
-        {/* Top Face Graphic — dot grid + agent ID */}
-        <Html
-          transform
-          position={[0, H / 2 + 0.001, 0]}
-          rotation={[-Math.PI / 2, 0, 0]}
-          scale={0.01}
-          zIndexRange={[0, 0]}
-        >
-          <div
-            className="flex items-center justify-center overflow-hidden pointer-events-none"
-            style={{
-              width: `${W * 100}px`,
-              height: `${D * 100}px`,
-              opacity: 0.1,
-              backgroundImage: 'radial-gradient(circle, #fff 1px, transparent 1px)',
-              backgroundSize: '20px 20px',
-            }}
-          >
-            <span
-              className="font-mono text-8xl font-bold tracking-widest transform -rotate-45 transition-colors duration-500"
-              style={{ color: isSelected ? hexColor : 'rgba(255,255,255,0.2)' }}
-            >
-              {agent.id.toUpperCase()}
-            </span>
-          </div>
-        </Html>
       </mesh>
+
+      {/* Front face — agent name (3D Text, always visible) */}
+      <Text
+        position={[0, 0.15, D / 2 + 0.02]}
+        fontSize={0.22}
+        color={hexColor}
+        anchorX="center"
+        anchorY="middle"
+        font="https://fonts.gstatic.com/s/jetbrainsmono/v18/tDbY2o-flEEny0FZhsfKu5WU4xD-IQ-PuZJJXxfpAO-Lfjk.woff"
+        letterSpacing={0.15}
+        maxWidth={W - 0.4}
+      >
+        {agent.name.toUpperCase()}
+      </Text>
+
+      {/* Front face — status dot */}
+      <mesh position={[-W / 2 + 0.3, -0.2, D / 2 + 0.02]}>
+        <circleGeometry args={[0.06, 16]} />
+        <meshBasicMaterial color={statusColor} />
+      </mesh>
+      {/* Status glow ring for active */}
+      {isActive && (
+        <mesh position={[-W / 2 + 0.3, -0.2, D / 2 + 0.015]}>
+          <ringGeometry args={[0.06, 0.1, 16]} />
+          <meshBasicMaterial color={statusColor} transparent opacity={0.4} />
+        </mesh>
+      )}
+      {/* Secondary dots */}
+      <mesh position={[-W / 2 + 0.55, -0.2, D / 2 + 0.02]}>
+        <circleGeometry args={[0.05, 16]} />
+        <meshBasicMaterial color={hexColor} transparent opacity={0.4} />
+      </mesh>
+      <mesh position={[-W / 2 + 0.75, -0.2, D / 2 + 0.02]}>
+        <circleGeometry args={[0.05, 16]} />
+        <meshBasicMaterial color={hexColor} transparent opacity={0.15} />
+      </mesh>
+
+      {/* Front face — progress bar background */}
+      <mesh position={[W / 2 - 1.2, -0.2, D / 2 + 0.015]}>
+        <planeGeometry args={[2, 0.06]} />
+        <meshBasicMaterial color="#ffffff" transparent opacity={0.1} />
+      </mesh>
+      {/* Progress bar fill */}
+      {progress > 0 && (
+        <mesh position={[W / 2 - 1.2 - (1 - progress), -0.2, D / 2 + 0.02]}>
+          <planeGeometry args={[2 * progress, 0.06]} />
+          <meshBasicMaterial color={hexColor} />
+        </mesh>
+      )}
+
+      {/* Selection glow — edge highlight when selected */}
+      {isSelected && (
+        <mesh>
+          <boxGeometry args={[W + 0.08, H + 0.08, D + 0.08]} />
+          <meshBasicMaterial color={hexColor} transparent opacity={0.08} />
+        </mesh>
+      )}
+
+      {/* Top face — agent ID text */}
+      <Text
+        position={[0, H / 2 + 0.01, 0]}
+        rotation={[-Math.PI / 2, 0, Math.PI / 4]}
+        fontSize={0.5}
+        color={isSelected ? hexColor : '#ffffff'}
+        anchorX="center"
+        anchorY="middle"
+        font="https://fonts.gstatic.com/s/jetbrainsmono/v18/tDbY2o-flEEny0FZhsfKu5WU4xD-IQ-PuZJJXxfpAO-Lfjk.woff"
+        letterSpacing={0.2}
+        fillOpacity={isSelected ? 0.3 : 0.08}
+      >
+        {agent.id.toUpperCase()}
+      </Text>
     </group>
   );
 };
