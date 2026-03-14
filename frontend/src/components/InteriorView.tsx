@@ -391,6 +391,16 @@ export default function InteriorView({ server, onClose }: InteriorViewProps) {
     return () => window.removeEventListener('keydown', h);
   }, [onClose]);
 
+  // Browser back button / swipe back closes InteriorView
+  useEffect(() => {
+    window.history.pushState({ interiorView: true }, '');
+    const onPopState = () => { onClose(); };
+    window.addEventListener('popstate', onPopState);
+    return () => {
+      window.removeEventListener('popstate', onPopState);
+    };
+  }, [onClose]);
+
   if (!server) return null;
 
   const hexColor = server.color;
