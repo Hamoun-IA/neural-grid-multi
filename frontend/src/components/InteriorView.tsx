@@ -443,7 +443,8 @@ export default function InteriorView({ server, onClose }: InteriorViewProps) {
   if (!server) return null;
 
   const hexColor = server.color;
-  const agents = server.agents;
+  // Reverse so "main" (first from API) is at the top of the tower
+  const agents = useMemo(() => [...server.agents].reverse(), [server.agents]);
   const selectedAgent = agents.find((a) => a.id === selectedAgentId) ?? null;
   const selectedFloorIndex = selectedAgent ? agents.indexOf(selectedAgent) : 0;
 
