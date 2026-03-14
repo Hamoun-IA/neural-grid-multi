@@ -10,7 +10,8 @@ import { Server, Network, X } from 'lucide-react';
 import { ServerLayoutItem, Agent } from '../types';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-function formatTime(iso?: string): string {
+function formatTime(iso?: string, lastAge?: string): string {
+  if (lastAge) return lastAge;
   if (!iso) return '—';
   const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
   if (s < 60) return `${s}s ago`;
@@ -19,9 +20,9 @@ function formatTime(iso?: string): string {
 }
 
 function formatTokens(used?: number, max?: number): string {
-  if (!used && !max) return '—';
   const fmt = (n: number) => n >= 1000 ? `${Math.round(n / 1000)}k` : String(n);
-  return max ? `${fmt(used || 0)} / ${fmt(max)}` : fmt(used || 0);
+  if (used !== undefined || max !== undefined) return `${fmt(used || 0)} / ${fmt(max || 0)}`;
+  return '—';
 }
 
 // ─── CSS 3D Server Node ──────────────────────────────────────────────────────
@@ -333,11 +334,11 @@ const DetailPanel: React.FC<DetailPanelProps> = ({
               </div>
               <div className="bg-white/5 rounded-lg p-3 border border-white/5">
                 <div className="text-white/40 text-[10px] mb-1 font-mono tracking-wider">UPTIME</div>
-                <div className="text-sm font-medium">{formatTime(agent.lastActiveAt)}</div>
+                <div className="text-sm font-medium">{formatTime(agent.lastActiveAt, agent.lastAge)}</div>
               </div>
               <div className="bg-white/5 rounded-lg p-3 border border-white/5">
                 <div className="text-white/40 text-[10px] mb-1 font-mono tracking-wider">DERNIÈRE ACTIVITÉ</div>
-                <div className="text-sm font-medium">{formatTime(agent.lastActiveAt)}</div>
+                <div className="text-sm font-medium">{formatTime(agent.lastActiveAt, agent.lastAge)}</div>
               </div>
               <div className="bg-white/5 rounded-lg p-3 border border-white/5">
                 <div className="text-white/40 text-[10px] mb-1 font-mono tracking-wider">LATENCE (MOY)</div>
@@ -397,6 +398,7 @@ interface InteriorViewProps {
 export default function InteriorView({ server, onClose }: InteriorViewProps) {
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [rotation, setRotation] = useState({ x: -15, y: -30 });
+  const [zoom, setZoom] = useState(0.6);
   const [isDragging, setIsDragging] = useState(false);
   const [lastPos, setLastPos] = useState({ x: 0, y: 0 });
 
@@ -448,6 +450,12 @@ export default function InteriorView({ server, onClose }: InteriorViewProps) {
   };
   const handleTouchEnd = () => setIsDragging(false);
 
+  // ── Scroll zoom ──
+  const handleWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    setZoom(prev => Math.max(0.2, Math.min(2, prev + e.deltaY * -0.001)));
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -463,6 +471,7 @@ export default function InteriorView({ server, onClose }: InteriorViewProps) {
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
+      onWheel={handleWheel}
     >
       {/* ── CSS 3D Scene ── */}
       <div className="flex-1 relative cursor-move w-full h-full flex items-center justify-center"
@@ -471,7 +480,7 @@ export default function InteriorView({ server, onClose }: InteriorViewProps) {
         <div
           className="transition-transform duration-100 ease-linear"
           style={{
-            transform: `rotateX(${rotation.x}deg) rotateY(${rotation.y}deg)`,
+            transform: `scale(${zoom}) rotateX(${rotation.x}deg) rotateY(${rotation.y}deg)`,
             transformStyle: 'preserve-3d',
           }}
         >
@@ -518,7 +527,7 @@ export default function InteriorView({ server, onClose }: InteriorViewProps) {
           <Server className="w-4 h-4" style={{ color: hexColor }} />
           SERVER TOWER <span style={{ color: hexColor }}>—</span> {server.name.toUpperCase()}
         </div>
-        <p className="text-xs text-white/40 mt-2 font-mono ml-1">Click + Drag to Rotate</p>
+        <p className="text-xs text-white/40 mt-2 font-mono ml-1">Click + Drag to Rotate │ Scroll to Zoom</p>
       </div>
 
       {/* ── Detail Panel ── */}

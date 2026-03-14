@@ -35,8 +35,10 @@ function getEmoji(agentId: string, agentName: string): string {
 
 // ─── Map backend model string to display model ────────────────────────────
 function mapModel(model: string): string {
-  if (model.includes('opus')) return 'Opus';
-  if (model.includes('sonnet')) return 'Sonnet';
+  if (!model || model === 'unknown') return '—';
+  if (model.includes('opus')) return 'Claude Opus';
+  if (model.includes('sonnet')) return 'Claude Sonnet';
+  if (model.includes('haiku')) return 'Claude Haiku';
   return model;
 }
 
@@ -64,14 +66,15 @@ function mapServerStatus(status: string): Server['status'] {
 export function mapApiServer(raw: any): Partial<Server> {
   const agents: Agent[] = (raw.agents ?? []).map((a: any) => ({
     id: a.id,
-    name: a.name,
-    emoji: a.emoji || getEmoji(a.id, a.name),
+    name: a.name && a.name !== a.id ? a.name : (a.role || a.id),
+    emoji: a.emoji || getEmoji(a.id, a.name ?? a.id),
     model: a.model ? mapModel(a.model) : 'Sonnet',
     status: mapAgentStatus(a.status),
     sessionCount: a.sessionCount,
     lastActiveAt: a.lastActiveAt,
+    lastAge: a.lastAge,
     // V2 reporter fields
-    modelFriendly: a.modelFriendly || (a.model ? mapModel(a.model) : undefined),
+    modelFriendly: a.modelFriendly && a.modelFriendly !== 'Unknown' ? a.modelFriendly : (a.model ? mapModel(a.model) : undefined),
     tokensUsed: a.tokensUsed,
     tokensMax: a.tokensMax,
     tokensPct: a.tokensPct,

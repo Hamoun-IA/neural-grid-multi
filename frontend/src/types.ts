@@ -6,6 +6,7 @@ export interface Agent {
   status: 'IDLE' | 'THINKING' | 'FINISHED' | 'ACTIVE';
   sessionCount?: number;
   lastActiveAt?: string;
+  lastAge?: string;
   // V2 fields
   modelFriendly?: string;
   tokensUsed?: number;
