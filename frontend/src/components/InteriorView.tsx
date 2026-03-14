@@ -25,6 +25,33 @@ function formatTokens(used?: number, max?: number): string {
   return '—';
 }
 
+/** Format raw model string to friendly name (handles both mapped & unmapped) */
+function friendlyModel(agent: Agent): string {
+  // Try modelFriendly first (if it's not "Unknown")
+  if (agent.modelFriendly && agent.modelFriendly !== 'Unknown' && agent.modelFriendly !== '—') {
+    return agent.modelFriendly;
+  }
+  const m = (agent.model || '').toLowerCase();
+  if (m.includes('opus')) return 'Claude Opus';
+  if (m.includes('sonnet')) return 'Claude Sonnet';
+  if (m.includes('haiku')) return 'Claude Haiku';
+  if (m === 'unknown' || m === '—' || !m) return '—';
+  return agent.model;
+}
+
+/** Get display name for agent */
+function agentDisplayName(agent: Agent): string {
+  // If name is same as id (e.g. "main"), prefer role
+  if (agent.name === agent.id && agent.role) return agent.role;
+  return agent.name || agent.role || agent.id;
+}
+
+/** Get subtitle (role or model) */
+function agentSubtitle(agent: Agent): string {
+  if (agent.role) return agent.role;
+  return friendlyModel(agent);
+}
+
 // ─── CSS 3D Server Node ──────────────────────────────────────────────────────
 interface ServerNodeProps {
   agent: Agent;
@@ -311,9 +338,9 @@ const DetailPanel: React.FC<DetailPanelProps> = ({
               {agent.emoji}
             </div>
             <div>
-              <h2 className="text-xl font-bold tracking-wider">{agent.name}</h2>
+              <h2 className="text-xl font-bold tracking-wider">{agentDisplayName(agent)}</h2>
               <div className="text-sm font-mono mt-1" style={{ color: hexColor }}>
-                {agent.role || agent.modelFriendly || agent.model}
+                {agentSubtitle(agent)}
               </div>
             </div>
           </div>
@@ -330,7 +357,7 @@ const DetailPanel: React.FC<DetailPanelProps> = ({
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-white/5 rounded-lg p-3 border border-white/5">
                 <div className="text-white/40 text-[10px] mb-1 font-mono tracking-wider">MODÈLE</div>
-                <div className="text-sm font-medium">{agent.modelFriendly || agent.model}</div>
+                <div className="text-sm font-medium">{friendlyModel(agent)}</div>
               </div>
               <div className="bg-white/5 rounded-lg p-3 border border-white/5">
                 <div className="text-white/40 text-[10px] mb-1 font-mono tracking-wider">UPTIME</div>

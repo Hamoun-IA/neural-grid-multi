@@ -360,18 +360,27 @@ export default function App() {
               latencyMs: raw.latencyMs ?? oldServer.latencyMs,
               lastSeen: raw.lastSeen ?? oldServer.lastSeen,
               agentCount: raw.agentCount ?? oldServer.agentCount,
-              agents: raw.agents ? raw.agents.map((a: {id:string;name:string;model?:string;status?:string;sessionCount?:number;lastActiveAt?:string}) => {
-                const mockAgent = oldServer.agents.find((ma) => ma.id === a.id);
+              agents: raw.agents ? raw.agents.map((a: any) => {
+                const mockAgent = oldServer.agents.find((ma: any) => ma.id === a.id);
                 return {
                   id: a.id,
                   name: a.name,
-                  emoji: mockAgent?.emoji ?? '🤖',
-                  model: a.model ? (a.model.includes('opus') ? 'Opus' : a.model.includes('sonnet') ? 'Sonnet' : a.model) : (mockAgent?.model ?? 'Sonnet'),
+                  emoji: a.emoji || mockAgent?.emoji || '🤖',
+                  model: a.model || mockAgent?.model || 'Sonnet',
                   status: (a.status?.toUpperCase() === 'ACTIVE' ? 'ACTIVE' : a.status?.toUpperCase() === 'THINKING' ? 'THINKING' : 'IDLE') as 'IDLE' | 'THINKING' | 'FINISHED' | 'ACTIVE',
                   sessionCount: a.sessionCount,
                   lastActiveAt: a.lastActiveAt,
+                  // V2 fields
+                  lastAge: a.lastAge,
+                  modelFriendly: a.modelFriendly,
+                  tokensUsed: a.tokensUsed,
+                  tokensMax: a.tokensMax,
+                  tokensPct: a.tokensPct,
+                  role: a.role,
+                  activeSessions: a.activeSessions,
                 };
               }) : oldServer.agents,
+              system: raw.system ?? oldServer.system,
             };
 
             // Generate logs from status changes
