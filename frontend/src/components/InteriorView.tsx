@@ -59,15 +59,16 @@ interface ServerNodeProps {
   total: number;
   hexColor: string;
   isSelected: boolean;
+  spacing: number;
   onClick: () => void;
 }
 
 const NODE_W = 400;  // px
 const NODE_H = 80;   // px
 const NODE_D = 300;  // px (depth)
-const NODE_SPACING = 120; // px between floors
+const NODE_SPACING_DEFAULT = 120; // px between floors
 
-const ServerNode: React.FC<ServerNodeProps> = ({ agent, index, total, hexColor, isSelected, onClick }) => {
+const ServerNode: React.FC<ServerNodeProps> = ({ agent, index, total, hexColor, isSelected, spacing, onClick }) => {
   const isActive = agent.status === 'ACTIVE' || agent.status === 'THINKING';
   const progress = agent.tokensPct ?? 0;
 
@@ -78,7 +79,7 @@ const ServerNode: React.FC<ServerNodeProps> = ({ agent, index, total, hexColor, 
     : agent.status === 'IDLE' ? '' 
     : '';
 
-  const yPos = (total - 1 - index) * NODE_SPACING;
+  const yPos = (total - 1 - index) * spacing;
   const zPos = isSelected ? 80 : 0;
 
   return (
@@ -92,7 +93,7 @@ const ServerNode: React.FC<ServerNodeProps> = ({ agent, index, total, hexColor, 
         marginLeft: -NODE_W / 2,
         marginTop: -NODE_H / 2,
         transformStyle: 'preserve-3d',
-        transform: `translateY(${yPos - (total * NODE_SPACING) / 2 + 60}px) translateZ(${zPos}px)`,
+        transform: `translateY(${yPos - (total * spacing) / 2 + 60}px) translateZ(${zPos}px)`,
       }}
       onClick={(e) => { e.stopPropagation(); onClick(); }}
     >
@@ -232,10 +233,10 @@ const ServerNode: React.FC<ServerNodeProps> = ({ agent, index, total, hexColor, 
 };
 
 // ─── Wireframe Rack ──────────────────────────────────────────────────────────
-const RackTower: React.FC<{ count: number; hexColor: string }> = ({ count, hexColor }) => {
+const RackTower: React.FC<{ count: number; hexColor: string; spacing: number }> = ({ count, hexColor, spacing }) => {
   const rackW = NODE_W + 40;
   const rackD = NODE_D + 40;
-  const rackH = count * NODE_SPACING + 40;
+  const rackH = count * spacing + 40;
 
   return (
     <div
@@ -268,7 +269,7 @@ const RackTower: React.FC<{ count: number; hexColor: string }> = ({ count, hexCo
 
       {/* Shelves */}
       {Array.from({ length: count }).map((_, i) => {
-        const serverY = (count - 1 - i) * NODE_SPACING - (count * NODE_SPACING) / 2 + 60;
+        const serverY = (count - 1 - i) * spacing - (count * spacing) / 2 + 60;
         const shelfY = serverY + 45;
         return (
           <div
@@ -425,7 +426,11 @@ interface InteriorViewProps {
 export default function InteriorView({ server, onClose }: InteriorViewProps) {
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [rotation, setRotation] = useState({ x: -15, y: -30 });
-  const [zoom, setZoom] = useState(0.6);
+  // Auto-scale zoom based on agent count so all racks fit
+  const agentCount = server?.agents?.length ?? 6;
+  const nodeSpacing = agentCount > 8 ? 100 : NODE_SPACING_DEFAULT;
+  const defaultZoom = agentCount > 10 ? 0.3 : agentCount > 7 ? 0.4 : 0.6;
+  const [zoom, setZoom] = useState(defaultZoom);
   const [isDragging, setIsDragging] = useState(false);
   const [lastPos, setLastPos] = useState({ x: 0, y: 0 });
 
@@ -518,7 +523,7 @@ export default function InteriorView({ server, onClose }: InteriorViewProps) {
               left: '50%', top: '50%',
               width: 1000, height: 1000,
               marginLeft: -500, marginTop: -500,
-              transform: `translateY(${agents.length * 60 + 40}px) rotateX(90deg)`,
+              transform: `translateY(${agents.length * nodeSpacing / 2 + 40}px) rotateX(90deg)`,
               backgroundImage: `linear-gradient(${hexColor}33 1px, transparent 1px), linear-gradient(90deg, ${hexColor}33 1px, transparent 1px)`,
               backgroundSize: '50px 50px',
               backgroundColor: '#020617',
@@ -527,7 +532,7 @@ export default function InteriorView({ server, onClose }: InteriorViewProps) {
           />
 
           {/* Rack Tower wireframe */}
-          <RackTower count={agents.length} hexColor={hexColor} />
+          <RackTower count={agents.length} hexColor={hexColor} spacing={nodeSpacing} />
 
           {/* Server Nodes */}
           {agents.map((agent, i) => (
@@ -538,6 +543,7 @@ export default function InteriorView({ server, onClose }: InteriorViewProps) {
               total={agents.length}
               hexColor={hexColor}
               isSelected={selectedAgentId === agent.id}
+              spacing={nodeSpacing}
               onClick={() => setSelectedAgentId(prev => prev === agent.id ? null : agent.id)}
             />
           ))}
