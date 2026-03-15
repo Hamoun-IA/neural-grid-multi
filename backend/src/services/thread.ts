@@ -294,9 +294,8 @@ async function runAutonomousLoop(thread: MeshThread): Promise<void> {
   try {
     const sourceServer = SERVERS.find(s => s.id === pA.server.toUpperCase());
     if (sourceServer) {
-      const notifyMsg = `🔗 Mesh Thread Terminé\n\n${aName} ⇄ ${bName} (${thread.currentRound} rounds)\n\n${summaryText}`;
-      // Use --deliver to send directly to David on Telegram (no reliance on agent choosing to message)
-      await sendAgentMsg(pA.agent, sourceServer, notifyMsg, '--deliver --channel telegram --reply-to 1555054582');
+      const notifyMsg = `Envoie ce message à David sur Telegram (chat ID 1555054582) avec le message tool :\n\n🔗 Mesh Thread Terminé\n\n${aName} ⇄ ${bName} (${thread.currentRound} rounds)\n\n${summaryText}`;
+      await sendAgentMsg(pA.agent, sourceServer, notifyMsg);
       console.log(`[thread] ${pA.agent} notified David about thread: ${thread.id}`);
     }
   } catch (err) {
