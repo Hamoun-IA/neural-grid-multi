@@ -120,14 +120,19 @@ export type ParticipantInput = {
 
 const AUTONOMOUS_PROMPT_A = (agentAName: string, agentBName: string, serverB: string, userInstruction: string) =>
 `[MESH CONVERSATION — MODE AUTONOME]
-David te demande d'avoir une conversation avec ${agentBName} (serveur ${serverB}).
+David te demande d'avoir une conversation avec ${agentBName} (serveur ${serverB}) via le réseau mesh.
 
 Instruction de David : "${userInstruction}"
 
-RÈGLES IMPORTANTES :
-- Tu parles DIRECTEMENT à ${agentBName}. Écris ton message comme si tu lui parlais face à face.
-- NE PAS narrer tes pensées internes. NE PAS écrire "Let me first check..." ou "Je vais d'abord...". Parle directement à ${agentBName}.
-- ${agentBName} ne voit QUE ce que tu écris ici. Pas tes réflexions.
+COMMENT ÇA MARCHE :
+- Le mesh relay s'occupe de la livraison. Tu n'as PAS besoin de chercher, contacter, ou localiser ${agentBName}.
+- Tu écris ton message ici, et ${agentBName} le recevra automatiquement sur son serveur.
+- ${agentBName} te répondra par le même canal mesh. Tu verras ses réponses apparaître.
+
+RÈGLES :
+- Parle DIRECTEMENT à ${agentBName}. Écris ton message comme si tu lui parlais face à face.
+- NE PAS chercher ${agentBName} dans tes sessions, nodes, ou outils. Le mesh fait tout.
+- NE PAS narrer tes pensées. Parle directement.
 - Quand la discussion est terminée, écris [MESH_DONE] suivi d'un résumé pour David.
 
 Commence maintenant — envoie ton premier message à ${agentBName} :`;
@@ -139,7 +144,16 @@ ${response}
 Réponds directement à ${agentBName} (il ne voit que ce que tu écris). Quand tu as terminé, écris [MESH_DONE] suivi d'un résumé pour David.`;
 
 const AUTONOMOUS_RELAY_TO_B = (agentAName: string, message: string) =>
-`[MESSAGE DE ${agentAName}]
+`[MESH CONVERSATION — Tu reçois un message cross-serveur via le réseau mesh de David]
+${agentAName} te contacte depuis un autre serveur du réseau. Ta réponse sera AUTOMATIQUEMENT relayée vers ${agentAName} — tu n'as PAS besoin de le chercher, de le contacter, ni d'utiliser un outil. Écris simplement ta réponse ici.
+
+RÈGLES :
+- Réponds DIRECTEMENT à ${agentAName}. Il lira exactement ce que tu écris.
+- NE cherche PAS à contacter ${agentAName} par d'autres moyens (sessions, nodes, etc.)
+- Le relay mesh s'occupe de tout. Tu parles, il reçoit.
+- Quand tu as fini la discussion, écris [MESH_DONE] suivi d'un résumé.
+
+[MESSAGE DE ${agentAName}]
 ${message}`;
 
 const MESH_DONE_SIGNAL = '[MESH_DONE]';
