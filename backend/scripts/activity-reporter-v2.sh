@@ -1,5 +1,6 @@
 #!/bin/bash
 # Activity Reporter V2 — enriched agent + system metrics
+# Lists ALL configured agents, enriches with session data when available.
 # Usage: activity-reporter-v2.sh <SERVER_ID> <HUB_URL>
 
 SERVER_ID="${1:?Usage: $0 <SERVER_ID> <HUB_URL>}"
@@ -33,8 +34,8 @@ case "$SERVER_ID" in
     EMOJI_MAP=([main]="🎬" [valentina]="💃" [jess]="🌟" [lorane]="🎭")
     ;;
   HOMELAB)
-    ROLE_MAP=([main]="Debug" [hub]="Hub" [frontend]="Frontend" [backend]="Backend")
-    EMOJI_MAP=([main]="🐛" [hub]="🔗" [frontend]="🎨" [backend]="⚙️")
+    ROLE_MAP=([main]="Debug" [hub]="Hub" [frontend]="Frontend" [backend]="Backend" [homenas]="HomeNAS" [skillking]="SkillKing")
+    EMOJI_MAP=([main]="🐛" [hub]="🔗" [frontend]="🎨" [backend]="⚙️" [homenas]="💾" [skillking]="👑")
     ;;
   TELENOVELAV3)
     ROLE_MAP=([main]="Main")
@@ -49,29 +50,45 @@ trap "rm -rf $TMPDIR" EXIT
 echo "[reporter-v2] Starting for $SERVER_ID → $HUB_URL (poll: ${POLL_INTERVAL}s)"
 
 while true; do
-  STATUS_OUTPUT=$($OPENCLAW_CMD status 2>/dev/null)
+  # Get ALL configured agents (timeout 10s to avoid hanging)
+  AGENTS_OUTPUT=$(timeout 10 $OPENCLAW_CMD agents list 2>/dev/null | grep "^-")
+  # Get session data
+  STATUS_OUTPUT=$(timeout 10 $OPENCLAW_CMD status 2>/dev/null)
+
   if [ $? -ne 0 ]; then
     sleep $POLL_INTERVAL
     continue
   fi
 
+  # If agents list is empty/failed, use ROLE_MAP keys as fallback
+  if [ -z "$AGENTS_OUTPUT" ] || ! echo "$AGENTS_OUTPUT" | grep -q "^-"; then
+    AGENTS_OUTPUT=""
+    for k in "${!ROLE_MAP[@]}"; do
+      AGENTS_OUTPUT="$AGENTS_OUTPUT
+- $k"
+    done
+  fi
+
   # Write inputs for Python
+  echo "$AGENTS_OUTPUT" > "$TMPDIR/agents_list.txt"
   echo "$STATUS_OUTPUT" > "$TMPDIR/status.txt"
   : > "$TMPDIR/roles.txt"
   for k in "${!ROLE_MAP[@]}"; do echo "$k=${ROLE_MAP[$k]}" >> "$TMPDIR/roles.txt"; done
   : > "$TMPDIR/emojis.txt"
   for k in "${!EMOJI_MAP[@]}"; do echo "$k=${EMOJI_MAP[$k]}" >> "$TMPDIR/emojis.txt"; done
 
-  # Python does everything: parse, enrich, system metrics, build payload, write files
-  python3 << PYEOF
+  TMPDIR_PY="$TMPDIR" SERVER_ID_PY="$SERVER_ID" python3 << 'PYEOF'
 import json, re, subprocess, hashlib, os
 from datetime import datetime, timezone
 
-tmpdir = "$TMPDIR"
-server_id = "$SERVER_ID"
+tmpdir = os.environ.get("TMPDIR_PY", "/tmp")
+server_id = os.environ.get("SERVER_ID_PY", "UNKNOWN")
 
+# Read inputs
+with open(f"{tmpdir}/agents_list.txt") as f:
+    agents_lines = f.readlines()
 with open(f"{tmpdir}/status.txt") as f:
-    lines = f.readlines()
+    status_lines = f.readlines()
 
 role_map, emoji_map = {}, {}
 try:
@@ -91,18 +108,40 @@ try:
                 emoji_map[k] = v
 except: pass
 
-agents = {}
-for line in lines:
+# 1. Parse ALL configured agents from "openclaw agents list"
+all_agents = {}
+for line in agents_lines:
+    # Lines like: "- main (default) (Nova)" or "- painter (Painter)"
+    m = re.match(r'^-\s+(\S+)', line)
+    if m:
+        aid = m.group(1)
+        all_agents[aid] = {
+            'id': aid,
+            'name': aid,
+            'status': 'IDLE',
+            'lastAge': '—',
+            'sessionCount': 0,
+            'activeSessions': 0,
+            'tokensUsed': 0,
+            'tokensMax': 0,
+            'tokensPct': 0,
+            'model': 'unknown',
+        }
+
+# 2. Parse sessions from "openclaw status" to enrich agents
+for line in status_lines:
     if '│' not in line or 'agent:' not in line:
         continue
     parts = [p.strip() for p in line.split('│') if p.strip()]
-    if len(parts) < 3:
+    if len(parts) < 5:
         continue
-    key, age = parts[0], parts[2]
+    key, kind, age, model_str, tokens_str = parts[0], parts[1], parts[2], parts[3], parts[4]
     m = re.match(r'agent:([^:]+)', key)
     if not m:
         continue
     aid = m.group(1)
+
+    # Determine if active
     status = 'IDLE'
     if age == 'just now':
         status = 'ACTIVE'
@@ -112,29 +151,62 @@ for line in lines:
     elif re.match(r'^\d+m ago$', age):
         if int(re.match(r'(\d+)', age).group(1)) < 5:
             status = 'ACTIVE'
-    if aid not in agents:
-        agents[aid] = {'id': aid, 'status': status, 'lastAge': age, 'sessionCount': 1, 'activeSessions': 1 if status == 'ACTIVE' else 0}
-    else:
-        agents[aid]['sessionCount'] += 1
-        if status == 'ACTIVE':
-            agents[aid]['status'] = 'ACTIVE'
-            agents[aid]['activeSessions'] += 1
 
-for aid, a in agents.items():
+    # Parse tokens: "92k/1000k (9%) · 🗄️ 100% cached" or "unknown/100k (?%)"
+    tokens_used, tokens_max, tokens_pct = 0, 0, 0
+    tm = re.match(r'([\d.]+k?)\/([\d.]+k?)\s*\((\d+)%\)', tokens_str)
+    if tm:
+        def parse_tok(s):
+            if s.endswith('k'):
+                return int(float(s[:-1]) * 1000)
+            return int(float(s))
+        tokens_used = parse_tok(tm.group(1))
+        tokens_max = parse_tok(tm.group(2))
+        tokens_pct = int(tm.group(3))
+
+    if aid not in all_agents:
+        all_agents[aid] = {
+            'id': aid, 'name': aid, 'status': status, 'lastAge': age,
+            'sessionCount': 1, 'activeSessions': 1 if status == 'ACTIVE' else 0,
+            'tokensUsed': tokens_used, 'tokensMax': tokens_max, 'tokensPct': tokens_pct,
+            'model': model_str,
+        }
+    else:
+        a = all_agents[aid]
+        a['sessionCount'] += 1
+        if status == 'ACTIVE':
+            a['status'] = 'ACTIVE'
+            a['activeSessions'] = a.get('activeSessions', 0) + 1
+        # Keep the most recent session's data
+        if a['lastAge'] == '—' or age == 'just now':
+            a['lastAge'] = age
+            a['model'] = model_str
+            a['tokensUsed'] = tokens_used
+            a['tokensMax'] = tokens_max
+            a['tokensPct'] = tokens_pct
+
+# 3. Enrich with role/emoji maps
+for aid, a in all_agents.items():
     if aid in role_map: a['role'] = role_map[aid]
     if aid in emoji_map: a['emoji'] = emoji_map[aid]
+    # Friendly model name
+    m = a.get('model', '')
+    if 'opus' in m: a['modelFriendly'] = 'Claude Opus'
+    elif 'sonnet' in m: a['modelFriendly'] = 'Claude Sonnet'
+    elif 'haiku' in m: a['modelFriendly'] = 'Claude Haiku'
+    else: a['modelFriendly'] = 'Unknown'
 
-agent_list = list(agents.values())
+agent_list = list(all_agents.values())
 
-# System metrics
+# 4. System metrics
 system = {}
 try:
     top = subprocess.run(['top', '-bn1'], capture_output=True, text=True, timeout=5).stdout
     for l in top.split('\n'):
         if 'Cpu' in l:
-            m = re.search(r'(\d+[.,]\d+)\s*id', l)
-            if m:
-                system['cpu'] = round(100.0 - float(m.group(1).replace(',', '.')), 1)
+            m2 = re.search(r'(\d+[.,]\d+)\s*id', l)
+            if m2:
+                system['cpu'] = round(100.0 - float(m2.group(1).replace(',', '.')), 1)
             break
     mem = subprocess.run(['free', '-m'], capture_output=True, text=True, timeout=5).stdout
     for l in mem.split('\n'):
