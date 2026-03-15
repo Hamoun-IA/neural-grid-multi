@@ -277,11 +277,12 @@ async function runAutonomousLoop(thread: MeshThread): Promise<void> {
   // ── Notify David via the source agent (participant A) on Telegram ─────
   const summaryText = thread.summary ?? `Conversation entre ${aName} et ${bName} terminée (${thread.currentRound} rounds, raison: ${thread.closeReason}).`;
 
-  const notifyAgent = async (agentId: string, server: typeof SERVERS[0], msg: string) => {
+  // Helper: send a message to an agent
+  const sendAgentMsg = async (agentId: string, server: typeof SERVERS[0], msg: string, extraFlags = '') => {
     const b64n = Buffer.from(msg, 'utf-8').toString('base64');
-    const tmpN = `/tmp/mesh-notify-${thread.id.slice(0,8)}.txt`;
+    const tmpN = `/tmp/mesh-notify-${thread.id.slice(0,8)}-${Date.now()}.txt`;
     const sudoN = server.sshSudo ? 'sudo ' : '';
-    const script = `echo '${b64n}' | base64 -d > ${tmpN} && ${sudoN}openclaw agent --agent ${agentId} --message "$(cat ${tmpN})" --timeout 300; rm -f ${tmpN}`;
+    const script = `echo '${b64n}' | base64 -d > ${tmpN} && ${sudoN}openclaw agent --agent ${agentId} --message "$(cat ${tmpN})" --timeout 300 ${extraFlags}; rm -f ${tmpN}`;
     if (server.sshUser === null) {
       await execAsync(script, { timeout: 320_000, maxBuffer: 10 * 1024 * 1024 });
     } else {
@@ -289,15 +290,17 @@ async function runAutonomousLoop(thread: MeshThread): Promise<void> {
     }
   };
 
+  // ── Notify David directly on Telegram via participant A's server ─────
   try {
     const sourceServer = SERVERS.find(s => s.id === pA.server.toUpperCase());
     if (sourceServer) {
-      const notifyMsg = `Envoie ce résumé à David sur Telegram maintenant (utilise le message tool). Voici le compte-rendu de ta conversation mesh avec ${bName} :\n\n${summaryText}`;
-      await notifyAgent(pA.agent, sourceServer, notifyMsg);
+      const notifyMsg = `🔗 Mesh Thread Terminé\n\n${aName} ⇄ ${bName} (${thread.currentRound} rounds)\n\n${summaryText}`;
+      // Use --deliver to send directly to David on Telegram (no reliance on agent choosing to message)
+      await sendAgentMsg(pA.agent, sourceServer, notifyMsg, '--deliver --channel telegram --reply-to 1555054582');
       console.log(`[thread] ${pA.agent} notified David about thread: ${thread.id}`);
     }
   } catch (err) {
-    console.error(`[thread] Failed to notify via ${pA.agent}:`, (err as Error).message);
+    console.error(`[thread] Failed to notify David via ${pA.agent}:`, (err as Error).message);
   }
 
   // ── Also notify Hub for dashboard display ───────────────────────────
@@ -305,7 +308,7 @@ async function runAutonomousLoop(thread: MeshThread): Promise<void> {
     const homelab = SERVERS.find(s => s.id === 'HOMELAB');
     if (homelab) {
       const hubMsg = `[MESH THREAD TERMINÉ]\n\nConversation ${aName} ⇄ ${bName} (${thread.currentRound} rounds)\nRaison: ${thread.closeReason}\n\nRésumé:\n${summaryText}\n\nThread ID: ${thread.id}`;
-      await notifyAgent('hub', homelab, hubMsg);
+      await sendAgentMsg('hub', homelab, hubMsg);
     }
   } catch (err) {
     console.error(`[thread] Failed to notify Hub:`, (err as Error).message);
