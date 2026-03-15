@@ -52,7 +52,9 @@ echo "[reporter-v2] Starting for $SERVER_ID → $HUB_URL (poll: ${POLL_INTERVAL}
 while true; do
   # Get ALL configured agents (timeout 15s to avoid hanging)
   AGENTS_OUTPUT=$(timeout 15 $OPENCLAW_CMD agents list 2>/dev/null | grep "^-")
-  # Get session data (timeout 20s — can be slow on busy servers)
+  # Get session data as JSON (much more reliable than parsing status text)
+  SESSIONS_JSON=$(timeout 20 $OPENCLAW_CMD sessions --all-agents --json 2>/dev/null)
+  # Fallback to status text if JSON fails
   STATUS_OUTPUT=$(timeout 20 $OPENCLAW_CMD status 2>/dev/null)
 
   if [ $? -ne 0 ]; then
@@ -72,6 +74,7 @@ while true; do
   # Write inputs for Python
   echo "$AGENTS_OUTPUT" > "$TMPDIR/agents_list.txt"
   echo "$STATUS_OUTPUT" > "$TMPDIR/status.txt"
+  echo "$SESSIONS_JSON" > "$TMPDIR/sessions.json"
   : > "$TMPDIR/roles.txt"
   for k in "${!ROLE_MAP[@]}"; do echo "$k=${ROLE_MAP[$k]}" >> "$TMPDIR/roles.txt"; done
   : > "$TMPDIR/emojis.txt"
@@ -128,64 +131,100 @@ for line in agents_lines:
             'model': 'unknown',
         }
 
-# 2. Parse sessions from "openclaw status" to enrich agents
-for line in status_lines:
-    if '│' not in line or 'agent:' not in line:
-        continue
-    parts = [p.strip() for p in line.split('│') if p.strip()]
-    if len(parts) < 5:
-        continue
-    key, kind, age, model_str, tokens_str = parts[0], parts[1], parts[2], parts[3], parts[4]
-    m = re.match(r'agent:([^:]+)', key)
-    if not m:
-        continue
-    aid = m.group(1)
+# 2. Parse sessions — prefer JSON, fallback to text parsing
+sessions_data = None
+try:
+    with open(f"{tmpdir}/sessions.json") as f:
+        content = f.read().strip()
+        if content and content.startswith('{'):
+            sessions_data = json.loads(content)
+except: pass
 
-    # Determine if active
-    status = 'IDLE'
-    if age == 'just now':
-        status = 'ACTIVE'
-    elif re.match(r'^\d+s ago$', age):
-        if int(re.match(r'(\d+)', age).group(1)) < 300:
-            status = 'ACTIVE'
-    elif re.match(r'^\d+m ago$', age):
-        if int(re.match(r'(\d+)', age).group(1)) < 5:
-            status = 'ACTIVE'
+if sessions_data and 'sessions' in sessions_data:
+    # JSON path — reliable structured data
+    for sess in sessions_data['sessions']:
+        key = sess.get('key', '')
+        m = re.match(r'agent:([^:]+)', key)
+        if not m: continue
+        aid = m.group(1)
 
-    # Parse tokens: "92k/1000k (9%) · 🗄️ 100% cached" or "unknown/100k (?%)"
-    tokens_used, tokens_max, tokens_pct = 0, 0, 0
-    tm = re.match(r'([\d.]+k?)\/([\d.]+k?)\s*\((\d+)%\)', tokens_str)
-    if tm:
-        def parse_tok(s):
-            if s.endswith('k'):
-                return int(float(s[:-1]) * 1000)
-            return int(float(s))
-        tokens_used = parse_tok(tm.group(1))
-        tokens_max = parse_tok(tm.group(2))
-        tokens_pct = int(tm.group(3))
+        age_ms = sess.get('ageMs', 999999999)
+        status = 'ACTIVE' if age_ms < 300000 else 'IDLE'  # <5min = active
+        
+        # Format age
+        age_s = age_ms / 1000
+        if age_s < 60: last_age = 'just now' if age_s < 10 else f'{int(age_s)}s ago'
+        elif age_s < 3600: last_age = f'{int(age_s/60)}m ago'
+        elif age_s < 86400: last_age = f'{int(age_s/3600)}h ago'
+        else: last_age = f'{int(age_s/86400)}d ago'
 
-    if aid not in all_agents:
-        all_agents[aid] = {
-            'id': aid, 'name': aid, 'status': status, 'lastAge': age,
-            'sessionCount': 1, 'activeSessions': 1 if status == 'ACTIVE' else 0,
-            'tokensUsed': tokens_used, 'tokensMax': tokens_max, 'tokensPct': tokens_pct,
-            'tokensTotalUsed': tokens_used,
-            'model': model_str,
-        }
-    else:
-        a = all_agents[aid]
-        a['sessionCount'] += 1
-        a['tokensTotalUsed'] = a.get('tokensTotalUsed', 0) + tokens_used
-        if status == 'ACTIVE':
-            a['status'] = 'ACTIVE'
-            a['activeSessions'] = a.get('activeSessions', 0) + 1
-        # Keep the most recent session's data (for tokensUsed = current session)
-        if a['lastAge'] == '—' or age == 'just now':
-            a['lastAge'] = age
-            a['model'] = model_str
-            a['tokensUsed'] = tokens_used
-            a['tokensMax'] = tokens_max
-            a['tokensPct'] = tokens_pct
+        tokens_used = sess.get('totalTokens', 0) or 0
+        tokens_max = sess.get('contextTokens', 0) or 0
+        tokens_pct = round(tokens_used / tokens_max * 100) if tokens_max > 0 else 0
+        model = sess.get('model', 'unknown')
+
+        if aid not in all_agents:
+            all_agents[aid] = {
+                'id': aid, 'name': aid, 'status': status, 'lastAge': last_age,
+                'sessionCount': 1, 'activeSessions': 1 if status == 'ACTIVE' else 0,
+                'tokensUsed': tokens_used, 'tokensMax': tokens_max, 'tokensPct': tokens_pct,
+                'tokensTotalUsed': tokens_used,
+                'model': model,
+            }
+        else:
+            a = all_agents[aid]
+            a['sessionCount'] += 1
+            a['tokensTotalUsed'] = a.get('tokensTotalUsed', 0) + tokens_used
+            if status == 'ACTIVE':
+                a['status'] = 'ACTIVE'
+                a['activeSessions'] = a.get('activeSessions', 0) + 1
+            # Keep most recent session
+            if a['lastAge'] == '—' or age_ms < 10000:
+                a['lastAge'] = last_age
+                a['model'] = model
+                a['tokensUsed'] = tokens_used
+                a['tokensMax'] = tokens_max
+                a['tokensPct'] = tokens_pct
+else:
+    # Fallback: parse text output of openclaw status
+    for line in status_lines:
+        if '│' not in line or 'agent:' not in line: continue
+        parts = [p.strip() for p in line.split('│') if p.strip()]
+        if len(parts) < 5: continue
+        key, kind, age, model_str, tokens_str = parts[0], parts[1], parts[2], parts[3], parts[4]
+        m = re.match(r'agent:([^:]+)', key)
+        if not m: continue
+        aid = m.group(1)
+        status = 'IDLE'
+        if age == 'just now': status = 'ACTIVE'
+        elif re.match(r'^\d+s ago$', age):
+            if int(re.match(r'(\d+)', age).group(1)) < 300: status = 'ACTIVE'
+        elif re.match(r'^\d+m ago$', age):
+            if int(re.match(r'(\d+)', age).group(1)) < 5: status = 'ACTIVE'
+        tokens_used, tokens_max, tokens_pct = 0, 0, 0
+        tm = re.match(r'([\d.]+k?)\/([\d.]+k?)\s*\((\d+)%\)', tokens_str)
+        if tm:
+            def parse_tok(s):
+                if s.endswith('k'): return int(float(s[:-1]) * 1000)
+                return int(float(s))
+            tokens_used = parse_tok(tm.group(1))
+            tokens_max = parse_tok(tm.group(2))
+            tokens_pct = int(tm.group(3))
+        if aid not in all_agents:
+            all_agents[aid] = {'id': aid, 'name': aid, 'status': status, 'lastAge': age,
+                'sessionCount': 1, 'activeSessions': 1 if status == 'ACTIVE' else 0,
+                'tokensUsed': tokens_used, 'tokensMax': tokens_max, 'tokensPct': tokens_pct,
+                'tokensTotalUsed': tokens_used, 'model': model_str}
+        else:
+            a = all_agents[aid]
+            a['sessionCount'] += 1
+            a['tokensTotalUsed'] = a.get('tokensTotalUsed', 0) + tokens_used
+            if status == 'ACTIVE':
+                a['status'] = 'ACTIVE'
+                a['activeSessions'] = a.get('activeSessions', 0) + 1
+            if a['lastAge'] == '—' or age == 'just now':
+                a['lastAge'] = age; a['model'] = model_str
+                a['tokensUsed'] = tokens_used; a['tokensMax'] = tokens_max; a['tokensPct'] = tokens_pct
 
 # 3. Enrich with role/emoji maps
 for aid, a in all_agents.items():
