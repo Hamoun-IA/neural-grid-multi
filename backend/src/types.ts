@@ -16,6 +16,7 @@ export interface AgentInfo {
   tokensUsed?: number;
   tokensMax?: number;
   tokensPct?: number;
+  tokensTotalUsed?: number;
   role?: string;
 }
 
@@ -44,6 +45,7 @@ export interface AgentReport {
   tokensUsed?: number;
   tokensMax?: number;
   tokensPct?: number;
+  tokensTotalUsed?: number;
   role?: string;
   emoji?: string;
   sessionCount?: number;

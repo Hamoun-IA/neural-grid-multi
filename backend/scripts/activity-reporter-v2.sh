@@ -50,10 +50,10 @@ trap "rm -rf $TMPDIR" EXIT
 echo "[reporter-v2] Starting for $SERVER_ID → $HUB_URL (poll: ${POLL_INTERVAL}s)"
 
 while true; do
-  # Get ALL configured agents (timeout 10s to avoid hanging)
-  AGENTS_OUTPUT=$(timeout 10 $OPENCLAW_CMD agents list 2>/dev/null | grep "^-")
-  # Get session data
-  STATUS_OUTPUT=$(timeout 10 $OPENCLAW_CMD status 2>/dev/null)
+  # Get ALL configured agents (timeout 15s to avoid hanging)
+  AGENTS_OUTPUT=$(timeout 15 $OPENCLAW_CMD agents list 2>/dev/null | grep "^-")
+  # Get session data (timeout 20s — can be slow on busy servers)
+  STATUS_OUTPUT=$(timeout 20 $OPENCLAW_CMD status 2>/dev/null)
 
   if [ $? -ne 0 ]; then
     sleep $POLL_INTERVAL
@@ -169,15 +169,17 @@ for line in status_lines:
             'id': aid, 'name': aid, 'status': status, 'lastAge': age,
             'sessionCount': 1, 'activeSessions': 1 if status == 'ACTIVE' else 0,
             'tokensUsed': tokens_used, 'tokensMax': tokens_max, 'tokensPct': tokens_pct,
+            'tokensTotalUsed': tokens_used,
             'model': model_str,
         }
     else:
         a = all_agents[aid]
         a['sessionCount'] += 1
+        a['tokensTotalUsed'] = a.get('tokensTotalUsed', 0) + tokens_used
         if status == 'ACTIVE':
             a['status'] = 'ACTIVE'
             a['activeSessions'] = a.get('activeSessions', 0) + 1
-        # Keep the most recent session's data
+        # Keep the most recent session's data (for tokensUsed = current session)
         if a['lastAge'] == '—' or age == 'just now':
             a['lastAge'] = age
             a['model'] = model_str

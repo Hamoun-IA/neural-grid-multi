@@ -51,6 +51,7 @@ router.post('/activity', (req, res) => {
     tokensUsed: a.tokensUsed ?? 0,
     tokensMax: a.tokensMax ?? 0,
     tokensPct: a.tokensPct ?? 0,
+    tokensTotalUsed: a.tokensTotalUsed ?? 0,
     role: a.role || '',
   }));
 

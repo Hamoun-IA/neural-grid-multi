@@ -78,6 +78,7 @@ export function mapApiServer(raw: any): Partial<Server> {
     tokensUsed: a.tokensUsed,
     tokensMax: a.tokensMax,
     tokensPct: a.tokensPct,
+    tokensTotalUsed: a.tokensTotalUsed,
     role: a.role,
     activeSessions: a.activeSessions,
   }));

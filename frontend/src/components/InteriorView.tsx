@@ -37,6 +37,13 @@ function formatTokens(used?: number, max?: number): string {
   return '—';
 }
 
+function formatTotalTokens(total?: number): string {
+  if (!total) return '0';
+  if (total >= 1_000_000) return `${(total / 1_000_000).toFixed(1)}M`;
+  if (total >= 1000) return `${Math.round(total / 1000)}k`;
+  return String(total);
+}
+
 function friendlyModel(agent: Agent): string {
   if (agent.modelFriendly && agent.modelFriendly !== 'Unknown' && agent.modelFriendly !== '—') {
     return agent.modelFriendly;
@@ -253,9 +260,9 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ agent, hexColor, serverName, 
                 ['MODÈLE', friendlyModel(agent)],
                 ['UPTIME', formatTime(agent.lastActiveAt, agent.lastAge)],
                 ['ACTIVITÉ', formatTime(agent.lastActiveAt, agent.lastAge)],
-                ['TOKENS', formatTokens(agent.tokensUsed, agent.tokensMax)],
+                ['TOKENS (SESSION)', formatTokens(agent.tokensUsed, agent.tokensMax)],
+                ['TOKENS (TOTAL)', formatTotalTokens(agent.tokensTotalUsed)],
                 ['MESSAGES', String(agent.sessionCount ?? 0)],
-                ['SESSIONS', String(agent.activeSessions ?? 0)],
               ].map(([label, val]) => (
                 <div key={label} className="bg-white/5 rounded-lg p-2.5 border border-white/5">
                   <div className="text-white/40 text-[9px] mb-0.5 font-mono tracking-wider">{label}</div>
@@ -323,7 +330,8 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ agent, hexColor, serverName, 
                 ['UPTIME', formatTime(agent.lastActiveAt, agent.lastAge)],
                 ['DERNIÈRE ACTIVITÉ', formatTime(agent.lastActiveAt, agent.lastAge)],
                 ['LATENCE (MOY)', '—'],
-                ['TOKENS (IN/OUT)', formatTokens(agent.tokensUsed, agent.tokensMax)],
+                ['TOKENS (SESSION)', formatTokens(agent.tokensUsed, agent.tokensMax)],
+                ['TOKENS (TOTAL)', formatTotalTokens(agent.tokensTotalUsed)],
                 ['MESSAGES TRAITÉS', String(agent.sessionCount ?? 0)],
               ].map(([label, val]) => (
                 <div key={label} className="bg-white/5 rounded-lg p-3 border border-white/5">
