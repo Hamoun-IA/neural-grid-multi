@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { broadcastEvent, updateCachedAgentActivity } from '../services/poller.js';
+import { broadcastEvent, updateCachedAgentActivity, getServerState } from '../services/poller.js';
 import type { AgentInfo, SystemMetrics } from '../types.js';
 
 const router = Router();
@@ -57,19 +57,7 @@ router.post('/activity', (req, res) => {
   const ts = timestamp || new Date().toISOString();
   const systemMetrics: SystemMetrics | undefined = system || undefined;
 
-  // Broadcast immediately via WebSocket (full v2 payload)
-  broadcastEvent({
-    type: 'server_update',
-    serverId: serverId.toUpperCase(),
-    status: 'ONLINE',
-    agents: validAgents,
-    latencyMs: 0,
-    timestamp: ts,
-    system: systemMetrics || null,
-    reporterVersion: version,
-  });
-
-  // Update the cached state in the poller (no SSH round-trip needed)
+  // Update the cached state FIRST (merges with existing agents from poller)
   updateCachedAgentActivity(
     serverId.toUpperCase(),
     serverName,
@@ -77,6 +65,19 @@ router.post('/activity', (req, res) => {
     ts,
     systemMetrics,
   );
+
+  // Broadcast the MERGED agent list (not just the reporter's partial list)
+  const merged = getServerState(serverId.toUpperCase());
+  broadcastEvent({
+    type: 'server_update',
+    serverId: serverId.toUpperCase(),
+    status: 'ONLINE',
+    agents: merged?.agents ?? validAgents,
+    latencyMs: merged?.latencyMs ?? 0,
+    timestamp: ts,
+    system: systemMetrics || merged?.system || null,
+    reporterVersion: version,
+  });
 
   res.json({ ok: true, received: agents.length });
 });
