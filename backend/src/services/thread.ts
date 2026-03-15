@@ -303,16 +303,8 @@ async function runAutonomousLoop(thread: MeshThread): Promise<void> {
     console.error(`[thread] Failed to notify David via ${pA.agent}:`, (err as Error).message);
   }
 
-  // ── Also notify Hub for dashboard display ───────────────────────────
-  try {
-    const homelab = SERVERS.find(s => s.id === 'HOMELAB');
-    if (homelab) {
-      const hubMsg = `[MESH THREAD TERMINÉ]\n\nConversation ${aName} ⇄ ${bName} (${thread.currentRound} rounds)\nRaison: ${thread.closeReason}\n\nRésumé:\n${summaryText}\n\nThread ID: ${thread.id}`;
-      await sendAgentMsg('hub', homelab, hubMsg);
-    }
-  } catch (err) {
-    console.error(`[thread] Failed to notify Hub:`, (err as Error).message);
-  }
+  // Hub notification removed — the WebSocket broadcast below handles dashboard display.
+  // Sending to Hub agent caused duplicate Telegram notifications to David.
 
   // Broadcast final state
   broadcastEvent({
