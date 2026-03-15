@@ -226,7 +226,39 @@ else:
                 a['lastAge'] = age; a['model'] = model_str
                 a['tokensUsed'] = tokens_used; a['tokensMax'] = tokens_max; a['tokensPct'] = tokens_pct
 
-# 3. Enrich with role/emoji maps
+# 3. Compute ALL-TIME token totals from session store files
+# Each agent has ~/.openclaw/agents/<id>/sessions/sessions.json with all session data
+# Try multiple paths: root, current user, common locations
+import glob as _glob
+openclaw_home = None
+for candidate in [
+    os.path.expanduser('~/.openclaw'),
+    '/root/.openclaw',
+    '/home/david/.openclaw',
+    '/home/hamoun/.openclaw',
+]:
+    if os.path.isdir(os.path.join(candidate, 'agents')):
+        openclaw_home = candidate
+        break
+if not openclaw_home:
+    # Try to find it
+    found = _glob.glob('/home/*/.openclaw/agents') + _glob.glob('/root/.openclaw/agents')
+    if found:
+        openclaw_home = os.path.dirname(found[0])
+if openclaw_home:
+    for aid, a in all_agents.items():
+        alltime = 0
+        sess_file = os.path.join(openclaw_home, 'agents', aid, 'sessions', 'sessions.json')
+        try:
+            if os.path.exists(sess_file):
+                store = json.load(open(sess_file))
+                for v in store.values():
+                    if isinstance(v, dict):
+                        alltime += v.get('totalTokens', 0) or 0
+        except: pass
+        a['tokensAllTime'] = alltime
+
+# 4. Enrich with role/emoji maps
 for aid, a in all_agents.items():
     if aid in role_map: a['role'] = role_map[aid]
     if aid in emoji_map: a['emoji'] = emoji_map[aid]

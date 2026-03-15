@@ -13,6 +13,7 @@ export interface Agent {
   tokensMax?: number;
   tokensPct?: number;
   tokensTotalUsed?: number;
+  tokensAllTime?: number;
   role?: string;
   activeSessions?: number;
 }

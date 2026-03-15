@@ -377,6 +377,7 @@ export default function App() {
                   tokensMax: a.tokensMax,
                   tokensPct: a.tokensPct,
                   tokensTotalUsed: a.tokensTotalUsed,
+                  tokensAllTime: a.tokensAllTime,
                   role: a.role,
                   activeSessions: a.activeSessions,
                 };

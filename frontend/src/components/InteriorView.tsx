@@ -260,8 +260,8 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ agent, hexColor, serverName, 
                 ['MODÈLE', friendlyModel(agent)],
                 ['UPTIME', formatTime(agent.lastActiveAt, agent.lastAge)],
                 ['ACTIVITÉ', formatTime(agent.lastActiveAt, agent.lastAge)],
-                ['TOKENS (SESSION)', formatTokens(agent.tokensUsed, agent.tokensMax)],
-                ['TOKENS (TOTAL)', formatTotalTokens(agent.tokensTotalUsed)],
+                ['SESSION', formatTokens(agent.tokensUsed, agent.tokensMax)],
+                ['TOTAL', formatTotalTokens(agent.tokensAllTime || agent.tokensTotalUsed)],
                 ['MESSAGES', String(agent.sessionCount ?? 0)],
               ].map(([label, val]) => (
                 <div key={label} className="bg-white/5 rounded-lg p-2.5 border border-white/5">
@@ -331,7 +331,7 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ agent, hexColor, serverName, 
                 ['DERNIÈRE ACTIVITÉ', formatTime(agent.lastActiveAt, agent.lastAge)],
                 ['LATENCE (MOY)', '—'],
                 ['TOKENS (SESSION)', formatTokens(agent.tokensUsed, agent.tokensMax)],
-                ['TOKENS (TOTAL)', formatTotalTokens(agent.tokensTotalUsed)],
+                ['TOKENS (ALL-TIME)', formatTotalTokens(agent.tokensAllTime || agent.tokensTotalUsed)],
                 ['MESSAGES TRAITÉS', String(agent.sessionCount ?? 0)],
               ].map(([label, val]) => (
                 <div key={label} className="bg-white/5 rounded-lg p-3 border border-white/5">
