@@ -24,6 +24,7 @@ const SERVER_POSITIONS: Record<string, { x: number; y: number; w: number; d: num
   STUDIO:        { x: 10 * CELL_SIZE, y: 12 * CELL_SIZE, w: CELL_SIZE * 1.5, d: CELL_SIZE * 1.5, h: 180 },
   HOMELAB:       { x:  6 * CELL_SIZE, y: 16 * CELL_SIZE, w: CELL_SIZE * 2,   d: CELL_SIZE * 2,   h: 140 },
   TELENOVELAV3:  { x: 20 * CELL_SIZE, y: 16 * CELL_SIZE, w: CELL_SIZE * 1.5, d: CELL_SIZE * 1.5, h: 160 },
+  LAB:           { x:  4 * CELL_SIZE, y: 10 * CELL_SIZE, w: CELL_SIZE * 1.2, d: CELL_SIZE * 1.2, h: 120 },
 };
 
 // Static color & role meta (visual identity — not from API)
@@ -34,6 +35,7 @@ const SERVER_META: Record<string, { color: string; port: number; role: string }>
   BABOUNETTE: { color: '#ffea00', port: 18789, role: 'Pixie + assistants' },
   HOMELAB:       { color: '#b000ff', port: 18789, role: 'Monitoring + Mesh' },
   TELENOVELAV3:  { color: '#ff4444', port: 18789, role: 'Telenovela' },
+  LAB:           { color: '#44ffcc', port: 18789, role: 'Test Lab' },
 };
 
 // Build layout entry from a Server object

@@ -41,6 +41,10 @@ case "$SERVER_ID" in
     ROLE_MAP=([main]="Main")
     EMOJI_MAP=([main]="🎭")
     ;;
+  LAB)
+    ROLE_MAP=([main]="Lab Manager")
+    EMOJI_MAP=([main]="🧪")
+    ;;
 esac
 
 LAST_HASH=""

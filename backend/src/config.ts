@@ -67,6 +67,15 @@ export const SERVERS: ServerConfig[] = [
     sshUser: 'root',
     sshSudo: false,
   },
+  {
+    id: 'LAB',
+    name: 'Lab',
+    ip: '100.65.134.91',
+    port: 18789,
+    token: getToken('TOKEN_LAB'),
+    sshUser: 'root',
+    sshSudo: false,
+  },
 ];
 
 export const PORT = parseInt(process.env.PORT ?? '3101', 10);
