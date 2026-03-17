@@ -9,7 +9,7 @@ import { Building } from './components/Building';
 import InteriorView from './components/InteriorView';
 import { MeshPanel } from './components/MeshPanel';
 import { mockServers } from './data/mockServers';
-import { Server, ServerLayoutItem } from './types';
+import { Agent, Server, ServerLayoutItem } from './types';
 import { fetchServers, connectWebSocket } from './services/api';
 
 const GRID_SIZE = 1000;
@@ -49,7 +49,7 @@ type LayoutServer = ServerLayoutItem & { port: number };
 
 // Merge API data into mock servers (keeping visual fields from mock)
 function mergeWithMock(apiData: Partial<Server>[]): Server[] {
-  return mockServers.map((mock) => {
+  const merged = mockServers.map((mock) => {
     const live = apiData.find((s) => s.id === mock.id);
     if (!live) return mock;
     return {
@@ -66,6 +66,20 @@ function mergeWithMock(apiData: Partial<Server>[]): Server[] {
       }) : mock.agents,
     } as Server;
   });
+  // Include any API servers not in mockServers (new servers added to backend)
+  for (const live of apiData) {
+    if (live.id && !merged.find((s) => s.id === live.id)) {
+      const meta = SERVER_META[live.id] ?? { color: '#00f0ff', port: 18789, role: '' };
+      merged.push({
+        id: live.id, name: live.name ?? live.id,
+        color: meta.color, ip: live.ip ?? '', port: meta.port, role: meta.role,
+        status: live.status ?? 'ONLINE',
+        agents: (live.agents ?? []) as Agent[],
+        agentCount: live.agentCount ?? (live.agents ?? []).length,
+      } as Server);
+    }
+  }
+  return merged;
 }
 
 // ─── Cross-server log messages ────────────────────────────────────────────

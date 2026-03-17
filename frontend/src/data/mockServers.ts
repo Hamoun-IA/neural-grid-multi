@@ -100,4 +100,16 @@ export const mockServers: Server[] = [
       { id: 'main', name: 'Main', emoji: '🎭', model: 'Sonnet', status: 'IDLE' },
     ],
   },
+  {
+    id: 'LAB',
+    name: 'Lab',
+    color: '#44ffcc',
+    ip: '100.65.134.91',
+    port: 18789,
+    role: 'Test Lab',
+    status: 'ONLINE',
+    agents: [
+      { id: 'main', name: 'Lab Manager', emoji: '🧪', model: 'Sonnet', status: 'IDLE' },
+    ],
+  },
 ];
