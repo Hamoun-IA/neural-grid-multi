@@ -503,14 +503,8 @@ export default function App() {
             }
           }
 
-          // Webhook activity: particles from reporting server to HOMELAB (hub)
-          if (data.type === 'server_update' && data.serverId && data.serverId !== 'HOMELAB') {
-            // Only trigger if there are active agents (real activity, not just a poll)
-            const hasActive = (data.agents ?? []).some((a: { status?: string }) => a.status === 'ACTIVE');
-            if (hasActive) {
-              triggerConnection(data.serverId, 'HOMELAB');
-            }
-          }
+          // Particles only for real mesh communications (mesh_message, mesh_thread)
+          // NOT for server_update/webhook — those are just status polling, not real traffic
         } catch { /* ignore */ }
       };
       ws.onclose = () => { if (!destroyed) setTimeout(connect, 5000); };
