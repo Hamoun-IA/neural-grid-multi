@@ -37,9 +37,9 @@ case "$SERVER_ID" in
     ROLE_MAP=([main]="Debug" [hub]="Hub" [frontend]="Frontend" [backend]="Backend" [homenas]="HomeNAS" [skillking]="SkillKing")
     EMOJI_MAP=([main]="🐛" [hub]="🔗" [frontend]="🎨" [backend]="⚙️" [homenas]="💾" [skillking]="👑")
     ;;
-  TELENOVELAV3)
-    ROLE_MAP=([main]="Main")
-    EMOJI_MAP=([main]="🎭")
+  BOSS)
+    ROLE_MAP=([main]="Boss")
+    EMOJI_MAP=([main]="👔")
     ;;
   LAB)
     ROLE_MAP=([main]="Lab Manager")

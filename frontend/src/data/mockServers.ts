@@ -89,8 +89,8 @@ export const mockServers: Server[] = [
     ],
   },
   {
-    id: 'TELENOVELAV3',
-    name: 'TelenovelaV3',
+    id: 'BOSS',
+    name: 'Boss',
     color: '#ff4444',
     ip: '100.119.23.69',
     port: 18789,

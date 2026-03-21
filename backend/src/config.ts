@@ -59,11 +59,11 @@ export const SERVERS: ServerConfig[] = [
     sshUser: null, // local — run commands directly
   },
   {
-    id: 'TELENOVELAV3',
-    name: 'TelenovelaV3',
+    id: 'BOSS',
+    name: 'Boss',
     ip: '100.119.23.69',
     port: 18789,
-    token: getToken('TOKEN_TELENOVELAV3'),
+    token: getToken('TOKEN_BOSS'),
     sshUser: 'root',
     sshSudo: false,
   },
