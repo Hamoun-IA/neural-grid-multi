@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { broadcastEvent, updateCachedAgentActivity, getServerState } from '../services/poller.js';
+import { metricsBuffer } from '../services/ringBuffer.js';
+import { checkAlerts } from '../services/alerting.js';
 import type { AgentInfo, SystemMetrics } from '../types.js';
 
 const router = Router();
@@ -80,6 +82,19 @@ router.post('/activity', (req, res) => {
     system: systemMetrics || merged?.system || null,
     reporterVersion: version,
   });
+
+  // Push dans le ring buffer
+  const agentUp = validAgents.filter((a) => a.status === 'ACTIVE').length;
+  metricsBuffer.push(serverId.toUpperCase(), {
+    ts: Math.floor(Date.now() / 1000),
+    cpu: systemMetrics?.cpu ?? 0,
+    ram: systemMetrics?.memPct ?? 0,
+    agentCount: validAgents.length,
+    agentUp,
+  });
+
+  // Vérification des alertes
+  checkAlerts(serverId.toUpperCase(), systemMetrics, validAgents);
 
   res.json({ ok: true, received: agents.length });
 });

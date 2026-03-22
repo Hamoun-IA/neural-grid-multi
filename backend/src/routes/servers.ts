@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { getServerStates, getServerState, getSystemMetrics } from '../services/poller.js';
+import { metricsBuffer } from '../services/ringBuffer.js';
 
 const router = Router();
 
@@ -59,6 +60,15 @@ router.get('/servers/:id/system', (req, res) => {
   const metrics = getSystemMetrics(req.params.id);
   if (!metrics) return res.json({});
   res.json(metrics);
+});
+
+// GET /api/servers/:id/sparkline?minutes=60 — ring buffer data for sparklines
+router.get('/servers/:id/sparkline', (req, res) => {
+  const serverId = req.params.id.toUpperCase();
+  const minutes = Math.max(1, Math.min(1440, parseInt(String(req.query['minutes'] ?? '60'), 10) || 60));
+  const since = Math.floor(Date.now() / 1000) - minutes * 60;
+  const points = metricsBuffer.get(serverId, since);
+  res.json({ serverId, points });
 });
 
 export default router;

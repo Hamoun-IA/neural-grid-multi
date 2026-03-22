@@ -8,6 +8,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Building } from './components/Building';
 import InteriorView from './components/InteriorView';
 import { MeshPanel } from './components/MeshPanel';
+import Sparkline from './components/Sparkline';
 import { mockServers } from './data/mockServers';
 import { Agent, Server, ServerLayoutItem } from './types';
 import { fetchServers, connectWebSocket } from './services/api';
@@ -111,10 +112,18 @@ export default function App() {
   const [interiorView, setInteriorView] = useState(false);
   const [meshOpen, setMeshOpen] = useState(false);
 
+  // ── Sparkline state ────────────────────────────────────────────────────────
+  const [sparklineData, setSparklineData] = useState<Record<string, { cpu: number[]; ram: number[] }>>({});
+  const [isMobile] = useState(() => window.innerWidth < 768);
+
   // Derived layout (servers with 3D positions)
   const serverLayout = useMemo<LayoutServer[]>(
-    () => servers.map(buildLayout),
-    [servers],
+    () => servers.map((srv) => {
+      const layout = buildLayout(srv);
+      const sp = sparklineData[srv.id];
+      return { ...layout, cpuHistory: sp?.cpu, ramHistory: sp?.ram };
+    }),
+    [servers, sparklineData],
   );
 
   // serverStates only tracks OFFLINE/ONLINE from real API data (no simulation)
@@ -303,6 +312,27 @@ export default function App() {
     return () => clearInterval(timer);
   }, []);
 
+  // ── Sparkline data fetcher ─────────────────────────────────────────────────
+  useEffect(() => {
+    if (isMobile) return;
+    const fetchAll = async () => {
+      for (const srv of servers) {
+        try {
+          const res = await fetch(`/api/servers/${srv.id}/sparkline?minutes=60`);
+          if (!res.ok) continue;
+          const json = await res.json() as { serverId: string; points: { ts: number; cpu: number; ram: number }[] };
+          if (!json.points?.length) continue;
+          const cpu = json.points.map((p) => p.cpu ?? 0);
+          const ram = json.points.map((p) => p.ram ?? 0);
+          setSparklineData((prev) => ({ ...prev, [srv.id]: { cpu, ram } }));
+        } catch { /* silently ignore */ }
+      }
+    };
+    fetchAll();
+    const interval = setInterval(fetchAll, 60_000);
+    return () => clearInterval(interval);
+  }, [servers.length, isMobile]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Helper: add a log entry ────────────────────────────────────────────────
   const addLog = (agent: string, msg: string, color: string) => {
     setLogs((prev) => {
@@ -423,6 +453,22 @@ export default function App() {
                 addLog(raw.id, `${agent.emoji} ${agent.name} — active`, meta.color);
               }
             });
+
+            // Update sparkline history from live system metrics
+            if (!isMobile && updated.system) {
+              const cpu = updated.system.cpu ?? 0;
+              const ram = updated.system.memPct ?? 0;
+              setSparklineData((prev) => {
+                const old = prev[raw.id] ?? { cpu: [], ram: [] };
+                return {
+                  ...prev,
+                  [raw.id]: {
+                    cpu: [...old.cpu, cpu].slice(-60),
+                    ram: [...old.ram, ram].slice(-60),
+                  },
+                };
+              });
+            }
 
             // Update prev ref
             const newPrev = { ...prevServersRef.current };
@@ -614,6 +660,15 @@ export default function App() {
                     status={serverStates[srv.id]}
                     rotation={rotation}
                   />
+                  {!isMobile && (srv.cpuHistory?.length ?? 0) > 1 && (
+                    <div
+                      className="absolute bottom-0 left-0 right-0 flex gap-1 p-1 pointer-events-none"
+                      style={{ transform: 'translateY(100%)' }}
+                    >
+                      <Sparkline data={srv.cpuHistory ?? []} color={srv.color} width={60} height={20} label="CPU" />
+                      <Sparkline data={srv.ramHistory ?? []} color="#ff6600" width={60} height={20} label="RAM" />
+                    </div>
+                  )}
                 </div>
               );
             })}

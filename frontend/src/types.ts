@@ -48,6 +48,8 @@ export interface ServerLayoutItem extends Server {
   w: number;
   d: number;
   h: number;
+  cpuHistory?: number[];
+  ramHistory?: number[];
 }
 
 export interface MeshAgent {
