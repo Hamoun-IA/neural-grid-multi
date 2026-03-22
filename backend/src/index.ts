@@ -36,19 +36,37 @@ app.use('/api/mesh', threadRouter);
 app.use('/api/webhook', webhookRouter);
 app.use('/api/files', filesRouter);
 
-// 404 fallback
-app.use((_req, res) => {
+// 404 fallback (skip WebSocket upgrade paths)
+app.use((req, _res, next) => {
+  if (req.headers.upgrade === 'websocket') return; // Let WS server handle it
+  next();
+}, (_req, res) => {
   res.status(404).json({ error: 'Not found' });
 });
 
-// HTTP server (shared with WebSocket)
+// HTTP server
 const httpServer = createServer(app);
 
-// WebSocket server on /ws path (dashboard events)
-const wss = new WebSocketServer({ server: httpServer, path: '/ws', perMessageDeflate: false });
+// WebSocket servers (noServer mode to avoid Express interference)
+const wss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
+const terminalWss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
 
-// WebSocket server for SSH terminals on /ws/terminal
-const terminalWss = new WebSocketServer({ server: httpServer, path: '/ws/terminal', perMessageDeflate: false });
+// Manual upgrade handling — prevents Express from writing 400 on WS connections
+httpServer.on('upgrade', (request, socket, head) => {
+  const pathname = new URL(request.url ?? '', `http://localhost:${PORT}`).pathname;
+
+  if (pathname === '/ws') {
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      wss.emit('connection', ws, request);
+    });
+  } else if (pathname.startsWith('/ws/terminal')) {
+    terminalWss.handleUpgrade(request, socket, head, (ws) => {
+      terminalWss.emit('connection', ws, request);
+    });
+  } else {
+    socket.destroy();
+  }
+});
 terminalWss.on('connection', (ws, req) => {
   // Extract serverId from URL: /ws/terminal?server=NOVA
   const url = new URL(req.url ?? '', `http://localhost:${PORT}`);
