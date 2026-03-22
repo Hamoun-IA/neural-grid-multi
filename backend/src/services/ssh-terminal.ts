@@ -10,7 +10,7 @@ import { SERVERS } from '../config.js';
 const SSH_CREDS: Record<string, { host: string; username: string; password: string; openclaw_home: string }> = {
   NOVA:       { host: '100.118.127.18', username: 'root',   password: '730eciPvx5xvhTNZ', openclaw_home: '/root/.openclaw' },
   STUDIO:     { host: '100.85.162.13',  username: 'root',   password: 'BaIsTa.91325',     openclaw_home: '/root/.openclaw' },
-  BABOUNETTE: { host: '100.66.209.98',  username: 'david',  password: 'Babou1325',         openclaw_home: '/home/david/.openclaw' },
+  BABOUNETTE: { host: '100.66.209.98',  username: 'root',   password: 'Babou1325',         openclaw_home: '/home/david/.openclaw' },
   CYBERPUNK:  { host: '100.76.173.17',  username: 'root',   password: 'BaIsTa.91325',     openclaw_home: '/root/.openclaw' },
   BOSS:       { host: '100.119.23.69',  username: 'root',   password: 'BaIsTa.91325',     openclaw_home: '/root/.openclaw' },
   LAB:        { host: '100.65.134.91',  username: 'root',   password: 'BaIsTa.91325',     openclaw_home: '/root/.openclaw' },
