@@ -9,12 +9,12 @@ import { SERVERS } from '../config.js';
 // SSH credentials per server (from TOOLS.md / Debug)
 import { readFileSync } from 'fs';
 
-const SSH_CREDS: Record<string, { host: string; username: string; password: string; openclaw_home: string; useKey?: boolean }> = {
+const SSH_CREDS: Record<string, { host: string; username: string; password: string; openclaw_home: string; useKey?: boolean; sshPort?: number }> = {
   NOVA:       { host: '100.118.127.18', username: 'root',   password: '730eciPvx5xvhTNZ', openclaw_home: '/root/.openclaw' },
   STUDIO:     { host: '100.85.162.13',  username: 'root',   password: 'BaIsTa.91325',     openclaw_home: '/root/.openclaw' },
   BABOUNETTE: { host: '100.66.209.98',  username: 'root',   password: 'Babou1325',         openclaw_home: '/home/david/.openclaw' },
   CYBERPUNK:  { host: '100.76.173.17',  username: 'root',   password: 'BaIsTa.91325',     openclaw_home: '/root/.openclaw' },
-  BOSS:       { host: '100.119.23.69',  username: 'root',   password: 'BaIsTa.91325',     openclaw_home: '/root/.openclaw' },
+  BOSS:       { host: '100.119.23.69',  username: 'root',   password: 'BaIsTa.91325',     openclaw_home: '/root/.openclaw', sshPort: 2222 },
   LAB:        { host: '100.65.134.91',  username: 'root',   password: 'BaIsTa.91325',     openclaw_home: '/root/.openclaw' },
   HOMELAB:    { host: '127.0.0.1',      username: 'root',   password: '',                    openclaw_home: '/root/.openclaw', useKey: true },
 };
@@ -24,7 +24,7 @@ export function getSSHCreds(serverId: string) {
 }
 
 function sshConnectOpts(creds: typeof SSH_CREDS[string]) {
-  const opts: any = { host: creds.host, port: 22, username: creds.username, readyTimeout: 10000 };
+  const opts: any = { host: creds.host, port: creds.sshPort ?? 22, username: creds.username, readyTimeout: 10000 };
   if (creds.useKey) {
     try { opts.privateKey = readFileSync('/root/.ssh/id_ed25519'); } catch { /* fallback to password */ }
   }
