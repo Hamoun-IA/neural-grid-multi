@@ -13,6 +13,7 @@ import { startPoller, setWss } from './services/poller.js';
 import filesRouter from './routes/files.js';
 import { attachTerminal } from './services/ssh-terminal.js';
 import { hmacAuth } from './middleware/hmacAuth.js';
+import { runMaintenance } from './db/queries.js';
 
 const app = express();
 
@@ -123,6 +124,12 @@ startPoller().catch((err) => {
   console.error('[startup] Poller failed to start:', err);
   process.exit(1);
 });
+
+// SQLite maintenance: run once at startup + every 5 minutes
+if (process.env.SQLITE_ENABLED !== 'false') {
+  runMaintenance();
+  setInterval(() => runMaintenance(), 5 * 60 * 1000);
+}
 
 // Graceful shutdown
 process.on('SIGINT', () => {

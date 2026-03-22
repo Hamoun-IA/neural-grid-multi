@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { getServerStates, getServerState, getSystemMetrics } from '../services/poller.js';
 import { metricsBuffer } from '../services/ringBuffer.js';
+import { getMetricsRaw, getMetricsHourly } from '../db/queries.js';
 
 const router = Router();
 
@@ -69,6 +70,45 @@ router.get('/servers/:id/sparkline', (req, res) => {
   const since = Math.floor(Date.now() / 1000) - minutes * 60;
   const points = metricsBuffer.get(serverId, since);
   res.json({ serverId, points });
+});
+
+// GET /api/servers/:id/history?hours=24 — historical metrics from SQLite
+router.get('/servers/:id/history', (req, res) => {
+  const serverId = req.params.id.toUpperCase();
+  const hours = Math.max(1, Math.min(8760, parseInt(String(req.query['hours'] ?? '24'), 10) || 24));
+  const sinceTs = Math.floor(Date.now() / 1000) - hours * 3600;
+
+  if (hours <= 24) {
+    const raw = getMetricsRaw(serverId, sinceTs);
+    res.json({
+      serverId,
+      points: raw.map((p) => ({
+        ts: p.ts,
+        cpu: p.cpu,
+        ram: p.ram,
+        disk: p.disk,
+        load1: p.load1,
+        agentCount: p.agentCount,
+        agentUp: p.agentUp,
+      })),
+      granularity: 'raw' as const,
+    });
+  } else {
+    const hourly = getMetricsHourly(serverId, sinceTs);
+    res.json({
+      serverId,
+      points: hourly.map((p) => ({
+        ts: p.ts,
+        cpu: p.cpu,
+        ram: p.ram,
+        disk: p.disk,
+        load1: p.load1,
+        agentCount: p.agentCount,
+        agentUp: null,
+      })),
+      granularity: 'hourly' as const,
+    });
+  }
 });
 
 export default router;

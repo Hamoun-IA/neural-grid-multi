@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { broadcastEvent, updateCachedAgentActivity, getServerState } from '../services/poller.js';
 import { metricsBuffer } from '../services/ringBuffer.js';
 import { checkAlerts } from '../services/alerting.js';
+import { insertMetric } from '../db/queries.js';
 import type { AgentInfo, SystemMetrics } from '../types.js';
 
 const router = Router();
@@ -85,13 +86,32 @@ router.post('/activity', (req, res) => {
 
   // Push dans le ring buffer
   const agentUp = validAgents.filter((a) => a.status === 'ACTIVE').length;
+  const nowTs = Math.floor(Date.now() / 1000);
   metricsBuffer.push(serverId.toUpperCase(), {
-    ts: Math.floor(Date.now() / 1000),
+    ts: nowTs,
     cpu: systemMetrics?.cpu ?? 0,
     ram: systemMetrics?.memPct ?? 0,
     agentCount: validAgents.length,
     agentUp,
   });
+
+  // Persist to SQLite L2
+  if (process.env.SQLITE_ENABLED !== 'false') {
+    try {
+      insertMetric(
+        serverId.toUpperCase(),
+        nowTs,
+        systemMetrics?.cpu ?? 0,
+        systemMetrics?.memPct ?? 0,
+        systemMetrics?.diskPct ?? 0,
+        systemMetrics?.load1 ?? 0,
+        validAgents.length,
+        agentUp,
+      );
+    } catch (err) {
+      console.error('[webhook] SQLite insert error:', err);
+    }
+  }
 
   // Vérification des alertes
   checkAlerts(serverId.toUpperCase(), systemMetrics, validAgents);
