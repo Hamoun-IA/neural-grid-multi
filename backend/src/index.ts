@@ -9,7 +9,9 @@ import serversRouter from './routes/servers.js';
 import meshRouter from './routes/mesh.js';
 import threadRouter from './routes/thread.js';
 import webhookRouter from './routes/webhook.js';
-import { startPoller, setWss } from './services/poller.js';
+import { startPoller, setWss, getServerState } from './services/poller.js';
+import { SERVERS } from './config.js';
+import { checkReporterDown } from './services/alerting.js';
 import filesRouter from './routes/files.js';
 import { attachTerminal } from './services/ssh-terminal.js';
 import { hmacAuth } from './middleware/hmacAuth.js';
@@ -124,6 +126,22 @@ startPoller().catch((err) => {
   console.error('[startup] Poller failed to start:', err);
   process.exit(1);
 });
+
+// Dead Man's Snitch — vérifie chaque minute si les reporters sont silencieux
+const REPORTER_DOWN_THRESHOLD_MS = 5 * 60 * 1000; // 5 min
+setInterval(() => {
+  const now = Date.now();
+  for (const server of SERVERS) {
+    const state = getServerState(server.id);
+    if (!state || !state.lastSeen) continue; // jamais vu → pas encore d'alerte
+    const lastSeenMs = new Date(state.lastSeen).getTime();
+    if (isNaN(lastSeenMs)) continue;
+    const silenceMs = now - lastSeenMs;
+    if (silenceMs >= REPORTER_DOWN_THRESHOLD_MS) {
+      checkReporterDown(server.id, silenceMs);
+    }
+  }
+}, 60 * 1000);
 
 // SQLite maintenance: run once at startup + every 5 minutes
 if (process.env.SQLITE_ENABLED !== 'false') {

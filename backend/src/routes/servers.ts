@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { getServerStates, getServerState, getSystemMetrics } from '../services/poller.js';
 import { metricsBuffer } from '../services/ringBuffer.js';
 import { getMetricsRaw, getMetricsHourly } from '../db/queries.js';
+import { getCpuHighSince } from '../services/alerting.js';
 
 const router = Router();
 
@@ -109,6 +110,60 @@ router.get('/servers/:id/history', (req, res) => {
       granularity: 'hourly' as const,
     });
   }
+});
+
+// GET /api/servers/:id/health — aura santé d'un serveur
+router.get('/servers/:id/health', (req, res) => {
+  const serverId = req.params.id.toUpperCase();
+  const state = getServerState(serverId);
+  if (!state) {
+    res.status(404).json({ error: 'Server not found', id: req.params.id });
+    return;
+  }
+
+  const system = getSystemMetrics(serverId) ?? state.system ?? null;
+  const cpu = system?.cpu ?? 0;
+  const ram = system?.memPct ?? 0;
+
+  // Calcul de l'âge du dernier report en secondes
+  let lastReportAge = 0;
+  if (state.lastSeen) {
+    const lastSeenMs = new Date(state.lastSeen).getTime();
+    if (!isNaN(lastSeenMs)) {
+      lastReportAge = Math.round((Date.now() - lastSeenMs) / 1000);
+    }
+  }
+
+  // CPU critique depuis 5 min ?
+  const cpuHighSince = getCpuHighSince(serverId);
+  const cpuHighDurationMs = cpuHighSince !== null ? Date.now() - cpuHighSince : 0;
+  const cpuCritical = cpuHighDurationMs >= 5 * 60 * 1000 && cpu > 90;
+
+  const alerts: string[] = [];
+  if (cpu > 90) alerts.push('cpu_high');
+  if (ram > 95) alerts.push('ram_critical');
+  else if (ram > 90) alerts.push('ram_high');
+  if (lastReportAge > 5 * 60) alerts.push('reporter_down');
+  else if (lastReportAge > 2 * 60) alerts.push('reporter_slow');
+
+  // Détermination du statut
+  let status: 'healthy' | 'warning' | 'critical';
+  if (lastReportAge > 5 * 60 || ram > 95 || cpuCritical) {
+    status = 'critical';
+  } else if (cpu > 80 || ram > 90 || lastReportAge > 2 * 60) {
+    status = 'warning';
+  } else {
+    status = 'healthy';
+  }
+
+  res.json({
+    serverId,
+    status,
+    cpu,
+    ram,
+    lastReportAge,
+    alerts,
+  });
 });
 
 export default router;

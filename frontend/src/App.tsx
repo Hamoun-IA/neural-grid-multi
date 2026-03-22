@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Building } from './components/Building';
+import BuildingAura from './components/BuildingAura';
 import InteriorView from './components/InteriorView';
 import { MeshPanel } from './components/MeshPanel';
 import Sparkline from './components/Sparkline';
@@ -81,6 +82,19 @@ function mergeWithMock(apiData: Partial<Server>[]): Server[] {
     }
   }
   return merged;
+}
+
+// ─── Server health based on live system metrics ───────────────────────────
+function getServerHealth(
+  srv: LayoutServer,
+  serverStates: Record<string, 'ONLINE' | 'BUSY' | 'OFFLINE'>,
+): 'healthy' | 'warning' | 'critical' {
+  const cpu = srv.system?.cpu ?? 0;
+  const ram = srv.system?.memPct ?? 0;
+  if (serverStates[srv.id] === 'OFFLINE') return 'critical';
+  if (cpu > 90 || ram > 95) return 'critical';
+  if (cpu > 80 || ram > 90) return 'warning';
+  return 'healthy';
 }
 
 // ─── Cross-server log messages ────────────────────────────────────────────
@@ -639,12 +653,19 @@ export default function App() {
             {/* Server Buildings — active/glowing ONLY if at least one agent is ACTIVE */}
             {serverLayout.map((srv) => {
               const hasActiveAgent = srv.agents.some((a) => a.status === 'ACTIVE');
+              const auraStatus = getServerHealth(srv, serverStates);
               return (
                 <div
                   key={srv.id}
                   onClick={(e) => { e.stopPropagation(); if (dragDistanceRef.current < 5) { setSelectedServer(srv); setInteriorView(true); } }}
                   style={{ cursor: 'pointer', position: 'absolute', left: srv.x, top: srv.y, width: srv.w, height: srv.d, transformStyle: 'preserve-3d' }}
                 >
+                  <BuildingAura
+                    status={auraStatus}
+                    color={srv.color}
+                    width={srv.w}
+                    depth={srv.d}
+                  />
                   <Building
                     x={0}
                     y={0}

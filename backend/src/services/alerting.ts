@@ -122,21 +122,25 @@ export function checkAlerts(
 }
 
 /**
- * Vérifie périodiquement si un serveur n'a plus envoyé de report depuis > 5 min.
- * À appeler depuis un setInterval dans index.ts ou poller.ts.
+ * Vérifie si un serveur spécifique n'a plus reporté (appelé depuis index.ts après vérification du seuil).
+ * @param serverId   ID du serveur (ex: "NOVA")
+ * @param silenceMs  Durée de silence en ms (calculée par l'appelant depuis lastSeen)
  */
-export function checkReporterDown(): void {
-  const now = Date.now();
-  for (const [serverId, state] of alertState.entries()) {
-    const silenceDuration = now - state.lastReportAt;
-    if (silenceDuration >= CONFIG.reporterDownMs) {
-      if (canAlert(state, 'reporter_down')) {
-        const silenceMin = Math.round(silenceDuration / 60000);
-        sendTelegramAlert(
-          `📵 [${serverId}] Reporter silencieux depuis ${silenceMin} min — serveur peut-être down ?`,
-        );
-        markAlerted(state, 'reporter_down');
-      }
-    }
+export function checkReporterDown(serverId: string, silenceMs: number): void {
+  const state = getState(serverId);
+  if (canAlert(state, 'reporter_down')) {
+    const silenceMin = Math.round(silenceMs / 60000);
+    sendTelegramAlert(
+      `📵 [${serverId}] Reporter silencieux depuis ${silenceMin} min — serveur peut-être down ?`,
+    );
+    markAlerted(state, 'reporter_down');
   }
+}
+
+/**
+ * Retourne le timestamp depuis lequel le CPU est > seuil pour un serveur donné.
+ * null si le CPU est sous le seuil ou si le serveur n'est pas suivi.
+ */
+export function getCpuHighSince(serverId: string): number | null {
+  return alertState.get(serverId.toUpperCase())?.cpuHighSince ?? null;
 }
