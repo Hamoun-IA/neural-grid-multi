@@ -702,26 +702,7 @@ export default function App() {
               <span>MESH COM</span>
             </button>
           </div>
-          {/* API Live indicator */}
-          <div
-            className="flex items-center space-x-2 bg-black/50 px-3 py-1 border rounded-full backdrop-blur-md"
-            style={{ borderColor: apiLive ? '#22c55e33' : '#ff444433' }}
-          >
-            <div
-              className="w-2 h-2 rounded-full"
-              style={{
-                backgroundColor: apiLive ? '#22c55e' : '#ff4444',
-                boxShadow: apiLive ? '0 0 8px #00ff00' : '0 0 8px #ff4444',
-                animation: apiLive ? 'pulse 2s infinite' : 'none',
-              }}
-            />
-            <span
-              className="text-xs font-bold tracking-widest"
-              style={{ color: apiLive ? '#22c55e' : '#ff4444' }}
-            >
-              {apiLive ? 'LIVE' : 'OFFLINE'}
-            </span>
-          </div>
+          {/* API Live indicator removed — replaced by WS staleness badge (fixed top-right) */}
         </div>
 
         {/* Bottom Server Panel */}
