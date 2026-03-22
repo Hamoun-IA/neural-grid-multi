@@ -114,15 +114,34 @@ export async function fetchServer(id: string): Promise<Partial<Server>> {
   return mapApiServer(data);
 }
 
-// ─── WebSocket with auto-reconnect ────────────────────────────────────────
+// ─── WebSocket with exponential backoff + heartbeat ──────────────────────
 let wsInstance: WebSocket | null = null;
 let wsReconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
 export function connectWebSocket(
   onMessage: (event: any) => void,
-  onStatusChange?: (live: boolean) => void,
+  onStatusChange?: (connected: boolean) => void,
 ): () => void {
   let destroyed = false;
+  let attempt = 0;
+  let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+  let stalenessTimer: ReturnType<typeof setTimeout> | null = null;
+  let lastMessageAt = Date.now();
+
+  function clearTimers() {
+    if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
+    if (stalenessTimer) { clearTimeout(stalenessTimer); stalenessTimer = null; }
+  }
+
+  function scheduleReconnect() {
+    if (destroyed) return;
+    // Exponential backoff: 1s, 2s, 4s … capped at 30s, ±500ms jitter
+    const base = Math.min(1000 * Math.pow(2, attempt), 30000);
+    const jitter = (Math.random() - 0.5) * 1000;
+    const delay = Math.max(0, base + jitter);
+    attempt++;
+    wsReconnectTimer = setTimeout(connect, delay);
+  }
 
   function connect() {
     if (destroyed) return;
@@ -130,12 +149,33 @@ export function connectWebSocket(
     try {
       const ws = new WebSocket(WS_URL);
       wsInstance = ws;
+      lastMessageAt = Date.now();
 
       ws.onopen = () => {
+        attempt = 0; // reset backoff on success
         onStatusChange?.(true);
+
+        // Send ping every 25s
+        heartbeatInterval = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'ping' }));
+          }
+        }, 25000);
+
+        // Check staleness every 5s; if no message for 35s → force reconnect
+        function checkStaleness() {
+          if (destroyed) return;
+          if (Date.now() - lastMessageAt > 35000) {
+            ws.close();
+          } else {
+            stalenessTimer = setTimeout(checkStaleness, 5000);
+          }
+        }
+        stalenessTimer = setTimeout(checkStaleness, 35000);
       };
 
       ws.onmessage = (ev) => {
+        lastMessageAt = Date.now();
         try {
           const data = JSON.parse(ev.data);
           onMessage(data);
@@ -149,16 +189,14 @@ export function connectWebSocket(
       };
 
       ws.onclose = () => {
+        clearTimers();
         onStatusChange?.(false);
-        if (!destroyed) {
-          wsReconnectTimer = setTimeout(connect, 5000);
-        }
+        scheduleReconnect();
       };
     } catch {
+      clearTimers();
       onStatusChange?.(false);
-      if (!destroyed) {
-        wsReconnectTimer = setTimeout(connect, 5000);
-      }
+      scheduleReconnect();
     }
   }
 
@@ -167,7 +205,8 @@ export function connectWebSocket(
   // Return cleanup function
   return () => {
     destroyed = true;
-    if (wsReconnectTimer) clearTimeout(wsReconnectTimer);
+    clearTimers();
+    if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
     if (wsInstance) {
       wsInstance.onclose = null;
       wsInstance.close();

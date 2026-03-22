@@ -7,6 +7,7 @@ SERVER_ID="${1:?Usage: $0 <SERVER_ID> <HUB_URL>}"
 HUB_URL="${2:-http://100.114.123.105:3101}"
 POLL_INTERVAL=15
 OPENCLAW_CMD="openclaw"
+WEBHOOK_SECRET="${WEBHOOK_SECRET:-neuralgrid-hmac-2026-secret}"
 
 if [ "$(whoami)" != "root" ] && command -v sudo &>/dev/null; then
   if ! $OPENCLAW_CMD status &>/dev/null 2>&1; then
@@ -338,9 +339,11 @@ PYEOF
   CURRENT_HASH=$(cat "$TMPDIR/hash.txt")
 
   if [ "$CURRENT_HASH" != "$LAST_HASH" ]; then
+    SIGNATURE=$(echo -n "$(cat $TMPDIR/payload.json)" | openssl dgst -sha256 -hmac "$WEBHOOK_SECRET" | awk '{print $NF}')
     HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
       -X POST "$HUB_URL/api/webhook/activity" \
       -H "Content-Type: application/json" \
+      -H "X-Signature-256: sha256=$SIGNATURE" \
       -d @"$TMPDIR/payload.json" \
       --connect-timeout 5 \
       --max-time 10 2>/dev/null)

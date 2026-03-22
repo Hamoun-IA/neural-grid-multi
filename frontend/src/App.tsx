@@ -105,6 +105,8 @@ export default function App() {
   // Live server data (merged API + mock fallback)
   const [servers, setServers] = useState<Server[]>(mockServers);
   const [apiLive, setApiLive] = useState<boolean>(false);
+  const [wsConnected, setWsConnected] = useState<boolean>(false);
+  const [lastWsMessage, setLastWsMessage] = useState<number>(Date.now());
   const [selectedServer, setSelectedServer] = useState<LayoutServer | null>(null);
   const [interiorView, setInteriorView] = useState(false);
   const [meshOpen, setMeshOpen] = useState(false);
@@ -291,12 +293,13 @@ export default function App() {
     return { bgBuildings: buildings, vehicles: v };
   }, []);
 
-  // ── Clock ─────────────────────────────────────────────────────────────────
+  // ── Clock + staleness ticker ──────────────────────────────────────────────
+  const [now, setNow] = useState<number>(Date.now());
   useEffect(() => {
-    const timer = setInterval(
-      () => setTime(new Date().toLocaleTimeString('en-US', { hour12: false })),
-      1000,
-    );
+    const timer = setInterval(() => {
+      setTime(new Date().toLocaleTimeString('en-US', { hour12: false }));
+      setNow(Date.now());
+    }, 1000);
     return () => clearInterval(timer);
   }, []);
 
@@ -343,6 +346,8 @@ export default function App() {
     const cleanup = connectWebSocket(
       (event) => {
         if (!isMounted) return;
+
+        setLastWsMessage(Date.now());
 
         if (event.type === 'heartbeat') {
           // Silently update server states from heartbeat if it includes servers
@@ -441,7 +446,9 @@ export default function App() {
       (live) => {
         if (!isMounted) return;
         setApiLive(live);
+        setWsConnected(live);
         if (live) {
+          setLastWsMessage(Date.now());
           addLog('SYS', 'WebSocket connected', '#00f0ff');
         } else {
           addLog('SYS', 'WebSocket disconnected — reconnecting…', '#ff8800');
@@ -871,6 +878,39 @@ export default function App() {
 
       {/* ── Mesh Comlink Panel ────────────────────────────────────────────── */}
       {meshOpen && <MeshPanel onClose={() => setMeshOpen(false)} />}
+
+      {/* ── WS Staleness Badge ───────────────────────────────────────────── */}
+      {(() => {
+        const secondsAgo = Math.floor((now - lastWsMessage) / 1000);
+        const isStale = wsConnected && secondsAgo > 30;
+        const badgeColor = !wsConnected ? '#ff4444' : isStale ? '#ffea00' : '#22c55e';
+        const badgeBg = !wsConnected ? 'rgba(255,68,68,0.15)' : isStale ? 'rgba(255,234,0,0.15)' : 'rgba(34,197,94,0.12)';
+        const badgeBorder = !wsConnected ? 'rgba(255,68,68,0.4)' : isStale ? 'rgba(255,234,0,0.4)' : 'rgba(34,197,94,0.3)';
+        const label = !wsConnected
+          ? '⚠ OFFLINE'
+          : isStale
+          ? `⚠ STALE (${secondsAgo}s ago)`
+          : '● LIVE';
+        return (
+          <motion.div
+            key={!wsConnected ? 'offline' : isStale ? 'stale' : 'live'}
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.3 }}
+            className="fixed top-4 right-4 z-50 font-mono text-xs px-3 py-1 rounded-full backdrop-blur-md select-none"
+            style={{
+              color: badgeColor,
+              background: badgeBg,
+              border: `1px solid ${badgeBorder}`,
+              textShadow: `0 0 6px ${badgeColor}80`,
+              boxShadow: `0 0 10px ${badgeColor}20`,
+            }}
+          >
+            {label}
+          </motion.div>
+        );
+      })()}
     </div>
   );
 }

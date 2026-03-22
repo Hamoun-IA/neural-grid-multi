@@ -12,6 +12,7 @@ import webhookRouter from './routes/webhook.js';
 import { startPoller, setWss } from './services/poller.js';
 import filesRouter from './routes/files.js';
 import { attachTerminal } from './services/ssh-terminal.js';
+import { hmacAuth } from './middleware/hmacAuth.js';
 
 const app = express();
 
@@ -25,6 +26,25 @@ app.use(cors({
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
+
+// Webhook route: raw body capture → HMAC verify → re-parse JSON for handler
+// Must be registered BEFORE global express.json() so body arrives as Buffer
+app.use(
+  '/api/webhook/activity',
+  express.raw({ type: 'application/json' }),
+  hmacAuth,
+  (req, _res, next) => {
+    // Re-parse raw Buffer into object so downstream handlers get req.body as JSON
+    if (Buffer.isBuffer(req.body)) {
+      try {
+        req.body = JSON.parse(req.body.toString('utf8'));
+      } catch {
+        req.body = {};
+      }
+    }
+    next();
+  },
+);
 
 app.use(express.json());
 
