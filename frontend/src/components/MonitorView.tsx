@@ -258,12 +258,9 @@ function DetailPanel({
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [chartRes, liveRes] = await Promise.all([
-          fetch(`/api/watchdog/chart/${serverId}`),
-          fetch(`/api/watchdog/live/${serverId}`),
-        ]);
+        // Only fetch chart (DB-based). Avoid /live/ — it uses SSH execSync and blocks Watchdog.
+        const chartRes = await fetch(`/api/watchdog/chart/${serverId}`);
         if (chartRes.ok) setChart(await chartRes.json());
-        if (liveRes.ok) setLive(await liveRes.json());
       } catch { /* ignore */ }
     };
     fetchData();
@@ -715,16 +712,9 @@ export default function MonitorView({ servers }: MonitorViewProps) {
 
   // Fetch live data per server (non-blocking)
   const fetchLive = useCallback(async () => {
-    const serverIds = servers.map((s) => resolveServerId(s.id));
-    const results = await Promise.allSettled(
-      serverIds.map((id) => fetch(`/api/watchdog/live/${id}`).then((r) => r.ok ? r.json() : null).catch(() => null))
-    );
-    const newLive: Record<string, WatchdogLive> = {};
-    serverIds.forEach((id, i) => {
-      const r = results[i];
-      if (r.status === 'fulfilled' && r.value) newLive[id] = r.value;
-    });
-    setLiveData(newLive);
+    // Skip /api/watchdog/live — it uses SSH execSync and blocks the Watchdog.
+    // Live metrics come from our own reporter pipeline instead.
+    void 0;
   }, [servers]);
 
   useEffect(() => {

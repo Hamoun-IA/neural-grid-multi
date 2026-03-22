@@ -7,7 +7,7 @@
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Server, Network, X, ChevronDown, Terminal, FolderOpen, Info } from 'lucide-react';
+import { Server, Network, X, ChevronDown, Terminal, FolderOpen, Info, Activity, Shield } from 'lucide-react';
 import WebTerminal from './WebTerminal';
 import FileExplorer from './FileExplorer';
 import { ServerLayoutItem, Agent } from '../types';
@@ -208,7 +208,267 @@ interface DetailPanelProps {
   onClose: () => void;
 }
 
-type PanelTab = 'info' | 'terminal' | 'files';
+type PanelTab = 'info' | 'terminal' | 'files' | 'health' | 'backup';
+
+// ─── Watchdog Types ───────────────────────────────────────────────────────────
+interface WatchdogCheck {
+  status: string;
+  details?: string;
+}
+
+interface WatchdogServer {
+  status: string;
+  checks: Record<string, WatchdogCheck>;
+  last_seen_at?: string;
+}
+
+interface WatchdogStatus {
+  [server: string]: WatchdogServer;
+}
+
+interface BackupEntry {
+  server: string;
+  status: string;
+  size_bytes: number;
+  duration_sec: number;
+  started_at: string;
+  backup_path?: string;
+}
+
+// ─── Health Tab ───────────────────────────────────────────────────────────────
+const HealthTab: React.FC<{ serverId: string; hexColor: string }> = ({ serverId, hexColor }) => {
+  const [data, setData] = useState<WatchdogStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 10000);
+    fetch('/api/watchdog/status', { signal: ctrl.signal })
+      .then(r => r.json())
+      .then((d: WatchdogStatus) => { setData(d); setLoading(false); })
+      .catch(() => { setError(true); setLoading(false); })
+      .finally(() => clearTimeout(timer));
+    return () => { ctrl.abort(); clearTimeout(timer); };
+  }, [serverId]);
+
+  if (loading) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-white/40 font-mono text-sm animate-pulse">Loading...</div>
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-white/40 font-mono text-sm">📡 Watchdog unavailable</div>
+      </div>
+    );
+  }
+
+  const serverKey = serverId.toLowerCase();
+  const serverData = data[serverKey];
+
+  if (!serverData) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-white/40 font-mono text-sm">📡 No data for {serverId}</div>
+      </div>
+    );
+  }
+
+  const statusColor = (s: string) => {
+    if (s === 'ok') return '#22c55e';
+    if (s === 'warning') return '#eab308';
+    return '#ef4444';
+  };
+
+  const globalStatusColor = statusColor(serverData.status);
+
+  const formatLastSeen = (iso?: string) => {
+    if (!iso) return '—';
+    const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+    if (s < 60) return `${s}s ago`;
+    if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+    return `${Math.floor(s / 3600)}h ago`;
+  };
+
+  return (
+    <div className="flex-1 overflow-y-auto p-4 space-y-3" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.1) transparent' }}>
+      {/* Global Status */}
+      <div className="bg-white/5 rounded-lg p-3 border border-white/10 font-mono">
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-white/40 text-[10px] tracking-wider">STATUT GLOBAL</span>
+          <span className="text-[10px]" style={{ color: hexColor }}>Last seen: {formatLastSeen(serverData.last_seen_at)}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: globalStatusColor, boxShadow: `0 0 6px ${globalStatusColor}` }} />
+          <span className="text-sm font-bold" style={{ color: globalStatusColor }}>{serverData.status.toUpperCase()}</span>
+        </div>
+      </div>
+
+      {/* Checks */}
+      <div className="bg-white/5 rounded-lg border border-white/10 overflow-hidden">
+        <div className="px-3 py-2 border-b border-white/5">
+          <span className="text-white/40 text-[10px] font-mono tracking-wider">CHECKS</span>
+        </div>
+        {Object.entries(serverData.checks).map(([name, check]) => {
+          const dotColor = statusColor(check.status);
+          return (
+            <div key={name} className="flex items-center gap-3 px-3 py-2 border-b border-white/5 last:border-0 hover:bg-white/5 transition-colors">
+              <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: dotColor, boxShadow: `0 0 4px ${dotColor}` }} />
+              <span className="font-mono text-xs text-white/70 w-20 flex-shrink-0">{name}</span>
+              <span className="font-mono text-xs flex-shrink-0" style={{ color: dotColor }}>{check.status}</span>
+              {check.details && (
+                <span className="font-mono text-xs text-white/40 truncate">{check.details}</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+// ─── Backup Tab ───────────────────────────────────────────────────────────────
+const BackupTab: React.FC<{ serverId: string; hexColor: string }> = ({ serverId, hexColor }) => {
+  const [data, setData] = useState<BackupEntry[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 10000);
+    fetch('/api/watchdog/full-backups', { signal: ctrl.signal })
+      .then(r => r.json())
+      .then((d: BackupEntry[]) => { setData(d); setLoading(false); })
+      .catch(() => { setError(true); setLoading(false); })
+      .finally(() => clearTimeout(timer));
+    return () => { ctrl.abort(); clearTimeout(timer); };
+  }, [serverId]);
+
+  if (loading) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-white/40 font-mono text-sm animate-pulse">Loading...</div>
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-white/40 font-mono text-sm">📡 Watchdog unavailable</div>
+      </div>
+    );
+  }
+
+  const serverBackups = data
+    .filter(b => b.server.toLowerCase() === serverId.toLowerCase())
+    .sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime());
+
+  if (serverBackups.length === 0) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-white/40 font-mono text-sm">Aucun backup trouvé</div>
+      </div>
+    );
+  }
+
+  const latest = serverBackups[0];
+  const recent = serverBackups.slice(0, 5);
+
+  const formatSize = (bytes: number) => {
+    if (bytes >= 1_073_741_824) return `${(bytes / 1_073_741_824).toFixed(1)} GB`;
+    if (bytes >= 1_048_576) return `${(bytes / 1_048_576).toFixed(0)} MB`;
+    return `${Math.round(bytes / 1024)} KB`;
+  };
+
+  const formatDate = (iso: string) => {
+    try {
+      return new Date(iso).toLocaleString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    } catch {
+      return iso;
+    }
+  };
+
+  const formatDateShort = (iso: string) => {
+    try {
+      return new Date(iso).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    } catch {
+      return iso;
+    }
+  };
+
+  const statusEmoji = (s: string) => s === 'success' ? '✅' : s === 'running' ? '🔄' : '❌';
+  const statusColor = (s: string) => s === 'success' ? '#22c55e' : s === 'running' ? '#eab308' : '#ef4444';
+
+  return (
+    <div className="flex-1 overflow-y-auto p-4 space-y-3" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.1) transparent' }}>
+      {/* Layers summary */}
+      <div className="bg-white/5 rounded-lg p-3 border border-white/10">
+        <div className="text-white/40 text-[10px] font-mono tracking-wider mb-2">COUCHES DE BACKUP</div>
+        <div className="flex gap-3">
+          <div className="flex items-center gap-1.5 bg-white/5 px-2.5 py-1.5 rounded border border-white/10">
+            <span className="text-[10px] font-mono text-white/40">Git</span>
+            <span className="text-white/30 text-xs">—</span>
+          </div>
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded border" style={{ backgroundColor: `${hexColor}15`, borderColor: `${hexColor}40` }}>
+            <span className="text-[10px] font-mono" style={{ color: hexColor }}>NAS</span>
+            <span className="text-xs" style={{ color: hexColor }}>✓</span>
+          </div>
+          <div className="flex items-center gap-1.5 bg-white/5 px-2.5 py-1.5 rounded border border-white/10">
+            <span className="text-[10px] font-mono text-white/40">Snapshot</span>
+            <span className="text-white/30 text-xs">—</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Latest backup */}
+      <div className="bg-white/5 rounded-lg p-3 border border-white/10 font-mono">
+        <div className="text-white/40 text-[10px] tracking-wider mb-3">DERNIER BACKUP</div>
+        <div className="space-y-2">
+          <div className="flex justify-between items-center">
+            <span className="text-white/50 text-xs">Date</span>
+            <span className="text-xs text-white">{formatDate(latest.started_at)}</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-white/50 text-xs">Status</span>
+            <span className="text-xs font-bold" style={{ color: statusColor(latest.status) }}>
+              {statusEmoji(latest.status)} {latest.status}
+            </span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-white/50 text-xs">Taille</span>
+            <span className="text-xs text-white">{formatSize(latest.size_bytes)}</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-white/50 text-xs">Durée</span>
+            <span className="text-xs text-white">{latest.duration_sec}s</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Recent history */}
+      {recent.length > 1 && (
+        <div className="bg-white/5 rounded-lg border border-white/10 overflow-hidden">
+          <div className="px-3 py-2 border-b border-white/5">
+            <span className="text-white/40 text-[10px] font-mono tracking-wider">HISTORIQUE (5 derniers)</span>
+          </div>
+          {recent.map((b, i) => (
+            <div key={i} className="flex items-center gap-2 px-3 py-2 border-b border-white/5 last:border-0 hover:bg-white/5 transition-colors font-mono text-xs">
+              <span className="text-white/40 w-28 flex-shrink-0">{formatDateShort(b.started_at)}</span>
+              <span className="flex-shrink-0" style={{ color: statusColor(b.status) }}>{statusEmoji(b.status)}</span>
+              <span className="text-white/60 flex-1 text-right">{formatSize(b.size_bytes)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 const DetailPanel: React.FC<DetailPanelProps> = ({ agent, hexColor, serverName, serverId, isMobile, onClose }) => {
   const [activeTab, setActiveTab] = useState<PanelTab>('info');
@@ -220,10 +480,12 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ agent, hexColor, serverName, 
     { id: 'info', label: 'Info', icon: <Info className="w-3.5 h-3.5" /> },
     { id: 'terminal', label: 'Terminal', icon: <Terminal className="w-3.5 h-3.5" /> },
     { id: 'files', label: 'Files', icon: <FolderOpen className="w-3.5 h-3.5" /> },
+    { id: 'health', label: 'Health', icon: <Activity className="w-3.5 h-3.5" /> },
+    { id: 'backup', label: 'Backup', icon: <Shield className="w-3.5 h-3.5" /> },
   ];
 
   if (isMobile) {
-    const isFullscreen = activeTab === 'terminal' || activeTab === 'files';
+    const isFullscreen = activeTab === 'terminal' || activeTab === 'files' || activeTab === 'health' || activeTab === 'backup';
     // ── Bottom Sheet (fullscreen for terminal/files) ──
     return (
       <motion.div
@@ -267,6 +529,20 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ agent, hexColor, serverName, 
         {activeTab === 'files' && (
           <div className="flex-1 overflow-hidden">
             <FileExplorer serverId={serverId} serverColor={hexColor} />
+          </div>
+        )}
+
+        {/* Health Tab */}
+        {activeTab === 'health' && (
+          <div className="flex-1 overflow-hidden flex flex-col">
+            <HealthTab serverId={serverId} hexColor={hexColor} />
+          </div>
+        )}
+
+        {/* Backup Tab */}
+        {activeTab === 'backup' && (
+          <div className="flex-1 overflow-hidden flex flex-col">
+            <BackupTab serverId={serverId} hexColor={hexColor} />
           </div>
         )}
 
@@ -334,7 +610,7 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ agent, hexColor, serverName, 
       animate={{ x: 0 }}
       exit={{ x: '100%' }}
       transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-      className={`${activeTab === 'info' ? 'w-96' : 'w-[600px]'} bg-[#050508]/90 backdrop-blur-2xl border-l border-white/10 flex flex-col shadow-2xl transition-all duration-300`}
+      className={`${activeTab === 'info' ? 'w-96' : 'w-[600px]'} bg-[#050508]/90 backdrop-blur-2xl border-l border-white/10 flex flex-col shadow-2xl transition-[width] duration-300`}
       style={{ position: 'relative', zIndex: 30, height: '100%', flexShrink: 0 }}
     >
       {/* Tab Bar */}
@@ -369,6 +645,20 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ agent, hexColor, serverName, 
       {activeTab === 'files' && (
         <div className="flex-1 overflow-hidden">
           <FileExplorer serverId={serverId} serverColor={hexColor} />
+        </div>
+      )}
+
+      {/* Health Tab */}
+      {activeTab === 'health' && (
+        <div className="flex-1 overflow-hidden flex flex-col">
+          <HealthTab serverId={serverId} hexColor={hexColor} />
+        </div>
+      )}
+
+      {/* Backup Tab */}
+      {activeTab === 'backup' && (
+        <div className="flex-1 overflow-hidden flex flex-col">
+          <BackupTab serverId={serverId} hexColor={hexColor} />
         </div>
       )}
 

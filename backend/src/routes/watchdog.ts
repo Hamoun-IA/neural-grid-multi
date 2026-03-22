@@ -4,7 +4,7 @@ const router = Router();
 
 const WATCHDOG_BASE = 'http://localhost:3003/api';
 const WATCHDOG_AUTH = Buffer.from('david:Debug2026!').toString('base64');
-const TIMEOUT_MS = 60_000; // Watchdog /api/status SSHes to all servers — can take 30-45s
+const TIMEOUT_MS = 5_000; // Keep short to avoid saturating Watchdog (execSync blocks its event loop)
 
 // Health check — ping Watchdog and measure latency
 router.get('/_health', async (_req, res) => {
