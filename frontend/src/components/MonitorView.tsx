@@ -752,7 +752,7 @@ export default function MonitorView({ servers }: MonitorViewProps) {
 
   return (
     <div className="absolute inset-0 overflow-y-auto" style={{ background: '#050505' }}>
-      <div className="min-h-full p-4 md:p-6 pb-8">
+      <div className="min-h-full p-4 md:p-6 pb-8 pt-20 md:pt-24">
 
         {/* Server Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4 mb-6">
