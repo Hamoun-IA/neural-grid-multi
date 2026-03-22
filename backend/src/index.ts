@@ -45,10 +45,10 @@ app.use((_req, res) => {
 const httpServer = createServer(app);
 
 // WebSocket server on /ws path (dashboard events)
-const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+const wss = new WebSocketServer({ server: httpServer, path: '/ws', perMessageDeflate: false });
 
 // WebSocket server for SSH terminals on /ws/terminal
-const terminalWss = new WebSocketServer({ server: httpServer, path: '/ws/terminal' });
+const terminalWss = new WebSocketServer({ server: httpServer, path: '/ws/terminal', perMessageDeflate: false });
 terminalWss.on('connection', (ws, req) => {
   // Extract serverId from URL: /ws/terminal?server=NOVA
   const url = new URL(req.url ?? '', `http://localhost:${PORT}`);
