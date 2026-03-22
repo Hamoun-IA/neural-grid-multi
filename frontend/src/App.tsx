@@ -10,6 +10,7 @@ import BuildingAura from './components/BuildingAura';
 import InteriorView from './components/InteriorView';
 import { MeshPanel } from './components/MeshPanel';
 import Sparkline from './components/Sparkline';
+import MonitorView from './components/MonitorView';
 import { mockServers } from './data/mockServers';
 import { Agent, Server, ServerLayoutItem } from './types';
 import { fetchServers, connectWebSocket } from './services/api';
@@ -777,12 +778,8 @@ export default function App() {
         </motion.div>
       </div>}
 
-      {/* ── Monitor View Placeholder ─────────────────────────────────────── */}
-      {viewMode === 'monitor' && (
-        <div className="absolute inset-0 flex items-center justify-center bg-[#050505]">
-          <p className="text-white/30 font-mono text-sm">Monitor View — Coming Soon</p>
-        </div>
-      )}
+      {/* ── Monitor View ─────────────────────────────────────────────────── */}
+      {viewMode === 'monitor' && <MonitorView servers={servers} />}
 
       {/* ── UI Overlay ───────────────────────────────────────────────────── */}
       <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-6">
