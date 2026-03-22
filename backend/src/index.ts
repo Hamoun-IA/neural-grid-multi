@@ -13,6 +13,7 @@ import { startPoller, setWss, getServerState } from './services/poller.js';
 import { SERVERS } from './config.js';
 import { checkReporterDown } from './services/alerting.js';
 import filesRouter from './routes/files.js';
+import watchdogRouter from './routes/watchdog.js';
 import { attachTerminal } from './services/ssh-terminal.js';
 import { hmacAuth } from './middleware/hmacAuth.js';
 import { runMaintenance } from './db/queries.js';
@@ -58,6 +59,7 @@ app.use('/api/mesh', meshRouter);
 app.use('/api/mesh', threadRouter);
 app.use('/api/webhook', webhookRouter);
 app.use('/api/files', filesRouter);
+app.use('/api/watchdog', watchdogRouter);
 
 // 404 fallback (skip WebSocket upgrade paths)
 app.use((req, _res, next) => {

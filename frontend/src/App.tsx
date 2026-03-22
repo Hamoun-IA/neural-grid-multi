@@ -136,6 +136,14 @@ export default function App() {
   const [interiorView, setInteriorView] = useState(false);
   const [meshOpen, setMeshOpen] = useState(false);
 
+  // ── View Mode (grid / monitor) ────────────────────────────────────────────
+  const [viewMode, setViewMode] = useState<'grid' | 'monitor'>(
+    () => (localStorage.getItem('ng-view') as 'grid' | 'monitor') || 'grid',
+  );
+
+  // ── Watchdog health ───────────────────────────────────────────────────────
+  const [watchdogConnected, setWatchdogConnected] = useState<boolean>(false);
+
   // ── Sparkline state ────────────────────────────────────────────────────────
   const [sparklineData, setSparklineData] = useState<Record<string, { cpu: number[]; ram: number[] }>>({});
   const [isMobile] = useState(() => window.innerWidth < 768);
@@ -356,6 +364,24 @@ export default function App() {
     const interval = setInterval(fetchAll, 60_000);
     return () => clearInterval(interval);
   }, [servers.length, isMobile]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Persist viewMode ──────────────────────────────────────────────────────
+  useEffect(() => { localStorage.setItem('ng-view', viewMode); }, [viewMode]);
+
+  // ── Watchdog health poll ───────────────────────────────────────────────────
+  useEffect(() => {
+    const check = async () => {
+      try {
+        const res = await fetch('/api/watchdog/_health');
+        setWatchdogConnected(res.ok);
+      } catch {
+        setWatchdogConnected(false);
+      }
+    };
+    check();
+    const interval = setInterval(check, 30_000);
+    return () => clearInterval(interval);
+  }, []);
 
   // ── Helper: add a log entry ────────────────────────────────────────────────
   const addLog = (agent: string, msg: string, color: string) => {
@@ -594,7 +620,7 @@ export default function App() {
   return (
     <div className="w-screen h-screen bg-[#050505] text-white overflow-hidden font-mono relative selection:bg-cyan-900">
       {/* ── 3D Scene ─────────────────────────────────────────────────────── */}
-      <div
+      {viewMode === 'grid' && <div
         className="absolute inset-0 flex items-center justify-center perspective-[1500px]"
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
@@ -749,7 +775,14 @@ export default function App() {
             ))}
           </div>
         </motion.div>
-      </div>
+      </div>}
+
+      {/* ── Monitor View Placeholder ─────────────────────────────────────── */}
+      {viewMode === 'monitor' && (
+        <div className="absolute inset-0 flex items-center justify-center bg-[#050505]">
+          <p className="text-white/30 font-mono text-sm">Monitor View — Coming Soon</p>
+        </div>
+      )}
 
       {/* ── UI Overlay ───────────────────────────────────────────────────── */}
       <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-6">
@@ -765,28 +798,56 @@ export default function App() {
             <div className="text-[8px] md:text-xs text-cyan-600 tracking-widest uppercase mb-2">
               OPENCLAW // NEURAL GRID
             </div>
-            <button
-              onClick={() => setMeshOpen(true)}
-              className="pointer-events-auto flex items-center gap-1.5 px-2 py-1 text-[10px] tracking-widest font-bold transition-all duration-150"
-              style={{
-                border: '1px solid rgba(0,240,255,0.4)',
-                color: '#00f0ff',
-                background: 'rgba(0,240,255,0.05)',
-                textShadow: '0 0 6px rgba(0,240,255,0.4)',
-                boxShadow: '0 0 8px rgba(0,240,255,0.1)',
-              }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 0 16px rgba(0,240,255,0.35)';
-                (e.currentTarget as HTMLButtonElement).style.background = 'rgba(0,240,255,0.12)';
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 0 8px rgba(0,240,255,0.1)';
-                (e.currentTarget as HTMLButtonElement).style.background = 'rgba(0,240,255,0.05)';
-              }}
-            >
-              <span>📡</span>
-              <span>MESH COM</span>
-            </button>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={() => setMeshOpen(true)}
+                className="pointer-events-auto flex items-center gap-1.5 px-2 py-1 text-[10px] tracking-widest font-bold transition-all duration-150"
+                style={{
+                  border: '1px solid rgba(0,240,255,0.4)',
+                  color: '#00f0ff',
+                  background: 'rgba(0,240,255,0.05)',
+                  textShadow: '0 0 6px rgba(0,240,255,0.4)',
+                  boxShadow: '0 0 8px rgba(0,240,255,0.1)',
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 0 16px rgba(0,240,255,0.35)';
+                  (e.currentTarget as HTMLButtonElement).style.background = 'rgba(0,240,255,0.12)';
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 0 8px rgba(0,240,255,0.1)';
+                  (e.currentTarget as HTMLButtonElement).style.background = 'rgba(0,240,255,0.05)';
+                }}
+              >
+                <span>📡</span>
+                <span className="hidden sm:inline">MESH COM</span>
+              </button>
+
+              {/* View Mode Toggle */}
+              <div className="pointer-events-auto flex items-center bg-black/50 border border-white/10 rounded-full p-0.5 backdrop-blur-md">
+                <button
+                  onClick={() => setViewMode('grid')}
+                  className={`px-3 py-1 rounded-full text-xs font-mono tracking-wider transition-all ${
+                    viewMode === 'grid' ? 'bg-white/15 text-white' : 'text-white/40 hover:text-white/60'
+                  }`}
+                >
+                  🌐 <span className="hidden sm:inline">GRID</span>
+                </button>
+                <button
+                  onClick={() => setViewMode('monitor')}
+                  className={`px-3 py-1 rounded-full text-xs font-mono tracking-wider transition-all ${
+                    viewMode === 'monitor' ? 'bg-white/15 text-white' : 'text-white/40 hover:text-white/60'
+                  }`}
+                >
+                  📊 <span className="hidden sm:inline">MONITOR</span>
+                </button>
+              </div>
+
+              {/* Watchdog Indicator */}
+              <div className="flex items-center gap-1.5 bg-black/40 px-2 py-1 rounded-full text-[10px] font-mono border border-white/10">
+                <div className={`w-1.5 h-1.5 rounded-full ${watchdogConnected ? 'bg-green-500' : 'bg-red-500'}`} />
+                <span className="text-white/40">WD</span>
+              </div>
+            </div>
           </div>
           {/* API Live indicator removed — replaced by WS staleness badge (fixed top-right) */}
         </div>
