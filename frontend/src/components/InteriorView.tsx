@@ -530,11 +530,18 @@ export default function InteriorView({ server, onClose }: InteriorViewProps) {
   };
   const handleTouchEnd = () => { setIsDragging(false); lastPinchDist.current = 0; };
 
-  // ── Scroll zoom ──
-  const handleWheel = (e: React.WheelEvent) => {
-    e.preventDefault();
-    setZoom(prev => Math.max(0.15, Math.min(2, prev + e.deltaY * -0.001)));
-  };
+  // ── Scroll zoom (non-passive listener to allow preventDefault) ──
+  const containerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => {
+      e.preventDefault();
+      setZoom(prev => Math.max(0.15, Math.min(2, prev + e.deltaY * -0.001)));
+    };
+    el.addEventListener('wheel', handler, { passive: false });
+    return () => el.removeEventListener('wheel', handler);
+  }, []);
 
   return (
     <motion.div
@@ -550,8 +557,7 @@ export default function InteriorView({ server, onClose }: InteriorViewProps) {
       onMouseLeave={handleMouseUp}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
-      onWheel={handleWheel}
+      onTouchEnd={handleTouchEnd} ref={containerRef}
     >
       {/* ── CSS 3D Scene ── */}
       <div className="flex-1 relative cursor-move w-full h-full flex items-center justify-center" style={{ transformStyle: 'preserve-3d' }}>
