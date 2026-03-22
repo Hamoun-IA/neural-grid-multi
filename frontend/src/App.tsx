@@ -85,15 +85,25 @@ function mergeWithMock(apiData: Partial<Server>[]): Server[] {
 }
 
 // ─── Server health based on live system metrics ───────────────────────────
+// Track CPU history for smoothing (avoid false alarms on single spikes)
+const cpuSmoothBuffer: Record<string, number[]> = {};
+
 function getServerHealth(
   srv: LayoutServer,
   serverStates: Record<string, 'ONLINE' | 'BUSY' | 'OFFLINE'>,
 ): 'healthy' | 'warning' | 'critical' {
-  const cpu = srv.system?.cpu ?? 0;
+  const rawCpu = srv.system?.cpu ?? 0;
   const ram = srv.system?.memPct ?? 0;
+
+  // Smooth CPU over last 4 readings (~1 min at 15s intervals)
+  if (!cpuSmoothBuffer[srv.id]) cpuSmoothBuffer[srv.id] = [];
+  cpuSmoothBuffer[srv.id].push(rawCpu);
+  if (cpuSmoothBuffer[srv.id].length > 4) cpuSmoothBuffer[srv.id].shift();
+  const cpu = cpuSmoothBuffer[srv.id].reduce((a, b) => a + b, 0) / cpuSmoothBuffer[srv.id].length;
+
   if (serverStates[srv.id] === 'OFFLINE') return 'critical';
-  if (cpu > 90 || ram > 95) return 'critical';
-  if (cpu > 80 || ram > 90) return 'warning';
+  if (cpu > 95 || ram > 95) return 'critical';
+  if (cpu > 85 || ram > 92) return 'warning';
   return 'healthy';
 }
 
