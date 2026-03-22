@@ -223,28 +223,60 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ agent, hexColor, serverName, 
   ];
 
   if (isMobile) {
-    // ── Bottom Sheet ──
+    const isFullscreen = activeTab === 'terminal' || activeTab === 'files';
+    // ── Bottom Sheet (fullscreen for terminal/files) ──
     return (
       <motion.div
         initial={{ y: '100%' }}
         animate={{ y: 0 }}
         exit={{ y: '100%' }}
         transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-        className="absolute bottom-0 left-0 right-0 bg-[#050508]/95 backdrop-blur-2xl border-t border-white/10 z-30 rounded-t-2xl"
-        style={{ maxHeight: '60vh' }}
+        className={`absolute ${isFullscreen ? 'inset-0' : 'bottom-0 left-0 right-0 rounded-t-2xl'} bg-[#050508]/95 backdrop-blur-2xl border-t border-white/10 z-30 flex flex-col`}
+        style={isFullscreen ? {} : { maxHeight: '60vh' }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Drag handle */}
-        <div className="flex justify-center py-3">
-          <div className="w-10 h-1 rounded-full bg-white/20" />
+        {/* Tab Bar */}
+        <div className="flex items-center border-b border-white/10 px-3 pt-2 gap-1 flex-shrink-0">
+          {tabs.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-mono tracking-wider rounded-t transition-colors ${
+                activeTab === tab.id ? 'bg-white/10 text-white border-b-2' : 'text-white/40'
+              }`}
+              style={activeTab === tab.id ? { borderBottomColor: hexColor } : {}}
+            >
+              {tab.icon}
+              {tab.label}
+            </button>
+          ))}
+          <div className="flex-1" />
+          <button onClick={() => { setActiveTab('info'); onClose(); }} className="text-white/40 p-1">
+            <ChevronDown className="w-4 h-4" />
+          </button>
         </div>
 
-        {!agent ? (
-          <div className="px-6 pb-6 text-center">
+        {/* Terminal Tab (fullscreen) */}
+        {activeTab === 'terminal' && (
+          <div className="flex-1 overflow-hidden">
+            <WebTerminal serverId={serverId} serverColor={hexColor} />
+          </div>
+        )}
+
+        {/* Files Tab (fullscreen) */}
+        {activeTab === 'files' && (
+          <div className="flex-1 overflow-hidden">
+            <FileExplorer serverId={serverId} serverColor={hexColor} />
+          </div>
+        )}
+
+        {/* Info Tab */}
+        {activeTab === 'info' && !agent ? (
+          <div className="px-6 pb-6 pt-4 text-center">
             <div className="text-[10px] text-white/30 tracking-[0.2em] font-mono">APPUIE SUR UN RACK</div>
           </div>
-        ) : (
-          <div className="px-5 pb-6 overflow-y-auto" style={{ maxHeight: 'calc(60vh - 40px)' }}>
+        ) : activeTab === 'info' && agent ? (
+          <div className="px-5 pb-6 pt-2 overflow-y-auto flex-1">
             {/* Header */}
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-lg border flex items-center justify-center text-xl" style={{ borderColor: `${hexColor}4d`, backgroundColor: `${hexColor}1a` }}>
@@ -254,7 +286,6 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ agent, hexColor, serverName, 
                 <h2 className="text-base font-bold tracking-wider truncate">{agentDisplayName(agent)}</h2>
                 <div className="text-xs font-mono" style={{ color: hexColor }}>{agentSubtitle(agent)}</div>
               </div>
-              <button onClick={onClose} className="text-white/40 p-1"><ChevronDown className="w-5 h-5" /></button>
             </div>
 
             {/* Status */}
@@ -291,7 +322,7 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ agent, hexColor, serverName, 
               <span className="px-2 py-0.5 bg-white/5 border rounded text-xs font-mono" style={{ borderColor: `${hexColor}4d`, color: hexColor }}>{serverName}</span>
             </div>
           </div>
-        )}
+        ) : null}
       </motion.div>
     );
   }
