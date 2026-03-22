@@ -10,6 +10,8 @@ import meshRouter from './routes/mesh.js';
 import threadRouter from './routes/thread.js';
 import webhookRouter from './routes/webhook.js';
 import { startPoller, setWss } from './services/poller.js';
+import filesRouter from './routes/files.js';
+import { attachTerminal } from './services/ssh-terminal.js';
 
 const app = express();
 
@@ -32,6 +34,7 @@ app.use('/api', serversRouter);
 app.use('/api/mesh', meshRouter);
 app.use('/api/mesh', threadRouter);
 app.use('/api/webhook', webhookRouter);
+app.use('/api/files', filesRouter);
 
 // 404 fallback
 app.use((_req, res) => {
@@ -41,8 +44,18 @@ app.use((_req, res) => {
 // HTTP server (shared with WebSocket)
 const httpServer = createServer(app);
 
-// WebSocket server on /ws path
+// WebSocket server on /ws path (dashboard events)
 const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+
+// WebSocket server for SSH terminals on /ws/terminal
+const terminalWss = new WebSocketServer({ server: httpServer, path: '/ws/terminal' });
+terminalWss.on('connection', (ws, req) => {
+  // Extract serverId from URL: /ws/terminal?server=NOVA
+  const url = new URL(req.url ?? '', `http://localhost:${PORT}`);
+  const serverId = url.searchParams.get('server') ?? '';
+  console.log(`[terminal] New SSH session for ${serverId}`);
+  attachTerminal(ws, serverId);
+});
 
 wss.on('connection', (ws, req) => {
   const ip = req.socket.remoteAddress ?? 'unknown';

@@ -7,7 +7,9 @@
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Server, Network, X, ChevronDown } from 'lucide-react';
+import { Server, Network, X, ChevronDown, Terminal, FolderOpen, Info } from 'lucide-react';
+import WebTerminal from './WebTerminal';
+import FileExplorer from './FileExplorer';
 import { ServerLayoutItem, Agent } from '../types';
 
 // ─── Responsive hook ──────────────────────────────────────────────────────────
@@ -201,14 +203,24 @@ interface DetailPanelProps {
   agent: Agent | null;
   hexColor: string;
   serverName: string;
+  serverId: string;
   isMobile: boolean;
   onClose: () => void;
 }
 
-const DetailPanel: React.FC<DetailPanelProps> = ({ agent, hexColor, serverName, isMobile, onClose }) => {
+type PanelTab = 'info' | 'terminal' | 'files';
+
+const DetailPanel: React.FC<DetailPanelProps> = ({ agent, hexColor, serverName, serverId, isMobile, onClose }) => {
+  const [activeTab, setActiveTab] = useState<PanelTab>('info');
   const isActive = agent?.status === 'ACTIVE' || agent?.status === 'THINKING';
   const statusDot = isActive ? 'bg-green-500 shadow-[0_0_8px_#22c55e]'
     : agent?.status === 'IDLE' ? 'bg-yellow-500' : 'bg-gray-500';
+
+  const tabs: { id: PanelTab; label: string; icon: React.ReactNode }[] = [
+    { id: 'info', label: 'Info', icon: <Info className="w-3.5 h-3.5" /> },
+    { id: 'terminal', label: 'Terminal', icon: <Terminal className="w-3.5 h-3.5" /> },
+    { id: 'files', label: 'Files', icon: <FolderOpen className="w-3.5 h-3.5" /> },
+  ];
 
   if (isMobile) {
     // ── Bottom Sheet ──
@@ -291,20 +303,52 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ agent, hexColor, serverName, 
       animate={{ x: 0 }}
       exit={{ x: '100%' }}
       transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-      className="w-96 bg-[#050508]/90 backdrop-blur-2xl border-l border-white/10 p-8 flex flex-col shadow-2xl"
+      className={`${activeTab === 'info' ? 'w-96' : 'w-[600px]'} bg-[#050508]/90 backdrop-blur-2xl border-l border-white/10 flex flex-col shadow-2xl transition-all duration-300`}
       style={{ position: 'relative', zIndex: 30, height: '100%', flexShrink: 0 }}
     >
-      <button onClick={onClose} className="absolute top-6 right-6 text-white/40 hover:text-white transition-colors cursor-pointer">
-        <X className="w-5 h-5" />
-      </button>
+      {/* Tab Bar */}
+      <div className="flex items-center border-b border-white/10 px-4 pt-3 pb-0 gap-1">
+        {tabs.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`flex items-center gap-1.5 px-3 py-2 text-xs font-mono tracking-wider rounded-t transition-colors ${
+              activeTab === tab.id ? 'bg-white/10 text-white border-b-2' : 'text-white/40 hover:text-white/60'
+            }`}
+            style={activeTab === tab.id ? { borderBottomColor: hexColor } : {}}
+          >
+            {tab.icon}
+            {tab.label}
+          </button>
+        ))}
+        <div className="flex-1" />
+        <button onClick={onClose} className="text-white/40 hover:text-white transition-colors p-1">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
 
-      {!agent ? (
-        <div className="flex-1 flex flex-col items-center justify-center gap-2">
+      {/* Terminal Tab */}
+      {activeTab === 'terminal' && (
+        <div className="flex-1 overflow-hidden">
+          <WebTerminal serverId={serverId} serverColor={hexColor} />
+        </div>
+      )}
+
+      {/* Files Tab */}
+      {activeTab === 'files' && (
+        <div className="flex-1 overflow-hidden">
+          <FileExplorer serverId={serverId} serverColor={hexColor} />
+        </div>
+      )}
+
+      {/* Info Tab */}
+      {activeTab === 'info' && !agent ? (
+        <div className="flex-1 flex flex-col items-center justify-center gap-2 p-8">
           <div className="text-[10px] text-white/30 tracking-[0.2em] font-mono">SELECT A SERVER UNIT</div>
           <div className="text-[9px] text-white/20 font-mono">TO INSPECT AGENT</div>
         </div>
-      ) : (
-        <>
+      ) : activeTab === 'info' && agent ? (
+        <div className="p-8 flex flex-col flex-1 overflow-hidden">
           <div className="flex items-center gap-4 mb-6 mt-2">
             <div className="w-14 h-14 rounded-xl border flex items-center justify-center text-3xl" style={{ borderColor: `${hexColor}4d`, backgroundColor: `${hexColor}1a` }}>
               {agent.emoji}
@@ -363,8 +407,8 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ agent, hexColor, serverName, 
               </div>
             </div>
           </div>
-        </>
-      )}
+        </div>
+      ) : null}
     </motion.div>
   );
 };
@@ -530,6 +574,7 @@ export default function InteriorView({ server, onClose }: InteriorViewProps) {
             agent={selectedAgent}
             hexColor={selectedAgent ? getRackColor(agents.indexOf(selectedAgent), hexColor) : hexColor}
             serverName={server.name}
+            serverId={server.id}
             isMobile={isMobile}
             onClose={() => setSelectedAgentId(null)}
           />
