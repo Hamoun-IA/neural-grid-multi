@@ -38,17 +38,11 @@ router.get('/_health', async (_req, res) => {
   res.json({ connected: true, latencyMs: 0, cacheAge: Math.round(ageMs / 1000), stale: ageMs > 120_000 });
 });
 
-// Map cache.servers array to a keyed object (MonitorView expects { nova: {...}, studio: {...} })
+// Status — the cache key is "status" (not "servers")
 router.get('/status', async (_req, res) => {
   const data = await getCache();
   if (!data) return res.status(502).json({ error: 'Watchdog cache unavailable' });
-  // servers can be array or object
-  if (Array.isArray(data.servers)) {
-    const obj: Record<string, any> = {};
-    for (const s of data.servers) obj[s.id || s.name || 'unknown'] = s;
-    return res.json(obj);
-  }
-  res.json(data.servers || {});
+  res.json(data.status || {});
 });
 
 router.get('/full-backups', async (_req, res) => {
@@ -60,7 +54,13 @@ router.get('/full-backups', async (_req, res) => {
 router.get('/nas-status', async (_req, res) => {
   const data = await getCache();
   if (!data) return res.status(502).json({ error: 'Watchdog cache unavailable' });
-  res.json(data.nasStatus || {});
+  const nas = data.nasStatus || {};
+  // Normalize: convert bytes to GB and add pct if missing
+  const total = nas.total_bytes || nas.total || 0;
+  const used = nas.used_bytes || nas.used || 0;
+  const free = nas.available_bytes || nas.free || 0;
+  const pct = total > 0 ? Math.round((used / total) * 1000) / 10 : 0;
+  res.json({ total, used, free, pct, ...nas });
 });
 
 router.get('/incidents', async (_req, res) => {
@@ -72,10 +72,13 @@ router.get('/incidents', async (_req, res) => {
 router.get('/versions', async (_req, res) => {
   const data = await getCache();
   if (!data) return res.status(502).json({ error: 'Watchdog cache unavailable' });
-  // versions can be array or object
+  // Convert array [{server_id, details}] to object {nova: "2026.3.13", ...}
   if (Array.isArray(data.versions)) {
     const obj: Record<string, string> = {};
-    for (const v of data.versions) obj[v.server || v.id || 'unknown'] = v.version || v;
+    for (const v of data.versions) {
+      const id = v.server_id || v.server || v.id || 'unknown';
+      obj[id] = v.details || v.version || '?';
+    }
     return res.json(obj);
   }
   res.json(data.versions || {});
