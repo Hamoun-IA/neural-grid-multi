@@ -11,6 +11,7 @@ import { Server, Network, X, ChevronDown, Terminal, FolderOpen, Info, Activity, 
 import WebTerminal from './WebTerminal';
 import FileExplorer from './FileExplorer';
 import { ServerLayoutItem, Agent } from '../types';
+import { soundEngine } from '../services/soundEngine';
 
 // ─── Responsive hook ──────────────────────────────────────────────────────────
 function useIsMobile() {
@@ -761,7 +762,11 @@ export default function InteriorView({ server, onClose }: InteriorViewProps) {
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', h);
-    return () => window.removeEventListener('keydown', h);
+    return () => {
+      window.removeEventListener('keydown', h);
+      // Stop idle loop when view closes
+      soundEngine.stopLoop('agent:idle'); soundEngine.stopLoop('agent:thinking');
+    };
   }, [onClose]);
 
   // Browser back button / swipe back closes InteriorView
@@ -875,7 +880,30 @@ export default function InteriorView({ server, onClose }: InteriorViewProps) {
               isSelected={selectedAgentId === agent.id}
               spacing={nodeSpacing}
               isMobile={isMobile}
-              onClick={() => setSelectedAgentId(prev => prev === agent.id ? null : agent.id)}
+              onClick={() => {
+                setSelectedAgentId(prev => {
+                  if (prev === agent.id) {
+                    // Deselect: blade in + stop idle loop
+                    soundEngine.play('rack:blade_in');
+                    soundEngine.stopLoop('agent:idle'); soundEngine.stopLoop('agent:thinking');
+                    return null;
+                  } else {
+                    // Deselect previous if any
+                    if (prev !== null) {
+                      soundEngine.play('rack:blade_in');
+                      soundEngine.stopLoop('agent:idle'); soundEngine.stopLoop('agent:thinking');
+                    }
+                    // Select new: blade out + start idle loop if agent is idle
+                    soundEngine.play('rack:blade_out');
+                    if (agent.status === 'ACTIVE' || agent.status === 'THINKING') {
+                      soundEngine.startLoop('agent:thinking');
+                    } else {
+                      soundEngine.startLoop('agent:idle');
+                    }
+                    return agent.id;
+                  }
+                });
+              }}
             />
           ))}
         </div>

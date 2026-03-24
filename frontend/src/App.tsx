@@ -14,6 +14,8 @@ import MonitorView from './components/MonitorView';
 import { mockServers } from './data/mockServers';
 import { Agent, Server, ServerLayoutItem } from './types';
 import { fetchServers, connectWebSocket } from './services/api';
+import { soundEngine } from './services/soundEngine';
+import { SoundToggle } from './components/SoundToggle';
 
 const GRID_SIZE = 1000;
 const CELL_SIZE = 40;
@@ -170,6 +172,8 @@ export default function App() {
 
   // Track previous server statuses to detect changes
   const prevServersRef = useRef<Record<string, Server>>({});
+  // Track previous health states for sound alerts
+  const prevHealthRef = useRef<Record<string, 'healthy' | 'warning' | 'critical'>>({});
 
   // ── Navigation State ──────────────────────────────────────────────────────
   const [rotation, setRotation] = useState({ x: 60, z: -45 });
@@ -492,8 +496,10 @@ export default function App() {
             if (oldStatus && oldStatus !== updated.status) {
               if (updated.status === 'ONLINE') {
                 addLog(raw.id, `↑ ONLINE`, meta.color);
+                soundEngine.play('agent:wake');
               } else if (updated.status === 'OFFLINE') {
                 addLog(raw.id, `↓ OFFLINE`, '#ff4444');
+                soundEngine.play('alert:critical');
               }
             }
 
@@ -519,6 +525,17 @@ export default function App() {
                   },
                 };
               });
+
+              // Health-based sound alerts
+              const newStatus = updated.status === 'OFFLINE' ? 'OFFLINE' : 'ONLINE';
+              const fakeStates: Record<string, 'ONLINE' | 'BUSY' | 'OFFLINE'> = { [raw.id]: newStatus as 'ONLINE' | 'OFFLINE' };
+              const fakeLayout = { ...updated, x: 0, y: 0, w: 0, d: 0, h: 0, port: 18789 };
+              const newHealth = getServerHealth(fakeLayout as any, fakeStates);
+              const prevHealth = prevHealthRef.current[raw.id];
+              if (prevHealth && prevHealth !== newHealth) {
+                if (newHealth === 'warning') soundEngine.play('alert:warning');
+              }
+              prevHealthRef.current[raw.id] = newHealth;
             }
 
             // Update prev ref
@@ -559,6 +576,32 @@ export default function App() {
     };
   }, []);
 
+  // ── Ambient sound on mount ────────────────────────────────────────────────
+  useEffect(() => {
+    if (!soundEngine.enabled) return;
+    soundEngine.init().then(() => {
+      soundEngine.startLoop('ambience:healthy');
+    });
+    return () => {
+      soundEngine.stopLoop('ambience:healthy', 1500);
+      soundEngine.stopLoop('ambience:incident', 1500);
+      soundEngine.stopLoop('ambience:maintenance', 1500);
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Switch ambience based on critical servers ─────────────────────────────
+  useEffect(() => {
+    if (!soundEngine.enabled) return;
+    const hasCritical = serverLayout.some((srv) =>
+      getServerHealth(srv, serverStates) === 'critical',
+    );
+    if (hasCritical) {
+      soundEngine.crossfadeLoop('ambience:healthy', 'ambience:incident');
+    } else {
+      soundEngine.crossfadeLoop('ambience:incident', 'ambience:healthy');
+    }
+  }, [serverStates]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Heartbeat logs removed — only real events shown
 
   // ── Inter-server connections (triggered by real mesh events via WebSocket) ──
@@ -592,6 +635,7 @@ export default function App() {
           // One-shot mesh message: particles from → to
           if (data.type === 'mesh_message' && data.from?.server && data.to?.server) {
             triggerConnection(data.from.server, data.to.server);
+            soundEngine.play('mesh:send');
           }
 
           // Thread message: particles between participants
@@ -605,6 +649,7 @@ export default function App() {
                 triggerConnection(fromServer, toServer);
               }
             }
+            soundEngine.play('mesh:receive');
           }
 
           // Particles only for real mesh communications (mesh_message, mesh_thread)
@@ -838,6 +883,9 @@ export default function App() {
                   📊 <span className="hidden sm:inline">MONITOR</span>
                 </button>
               </div>
+
+              {/* Sound Toggle */}
+              <SoundToggle />
 
               {/* Watchdog Indicator */}
               <div className="flex items-center gap-1.5 bg-black/40 px-2 py-1 rounded-full text-[10px] font-mono border border-white/10">
